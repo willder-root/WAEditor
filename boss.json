@@ -1,0 +1,12 @@
+{
+  "name": "waeditor",
+  "description": "Editor de texto WYSIWYG com suporte a HTML e RTF para Delphi, em Clean Architecture",
+  "version": "1.0.0",
+  "homepage": "https://github.com/willder-root/WAEditor",
+  "mainsrc": "src",
+  "browsingpath": "src/Domain;src/Application/Interfaces;src/Application/Commands;src/Application/Services;src/Infrastructure/WebBrowser;src/Infrastructure/FileSystem;src/Presentation",
+  "projects": [
+    "WAEditor.dproj"
+  ],
+  "dependencies": {}
+}
