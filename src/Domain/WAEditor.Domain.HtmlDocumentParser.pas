@@ -274,7 +274,14 @@ begin
   end
   else if (ATagName = 'p') or (ATagName = 'div') then
   begin
-    if FCurrentCell = nil then
+    // A live WYSIWYG surface commonly wraps each <li>'s content in its
+    // own <p> (<li><p>text</p></li>), and can do the same inside a
+    // <td>. That <p> is not a new top-level paragraph in that case --
+    // the list item/cell already is the content container -- so
+    // creating one here would leave a stray empty TWAParagraphBlock in
+    // the document for every list item, growing the block count (and
+    // visible blank lines) a little more on every RTF/HTML round trip.
+    if (FCurrentCell = nil) and (FCurrentListItem = nil) then
     begin
       FCurrentParagraph := FDocument.AddParagraph(ParseAlignmentAttribute(AAttributes, taLeftAlign));
       FCurrentParagraph.HasBorder :=
