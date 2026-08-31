@@ -12,6 +12,7 @@ uses
   WAEditor.Tests.Domain.TableSpecTests in 'Domain\WAEditor.Tests.Domain.TableSpecTests.pas',
   WAEditor.Tests.Domain.AlignmentMapperTests in 'Domain\WAEditor.Tests.Domain.AlignmentMapperTests.pas',
   WAEditor.Tests.Domain.TableHtmlBuilderTests in 'Domain\WAEditor.Tests.Domain.TableHtmlBuilderTests.pas',
+  WAEditor.Tests.Domain.FontSizeScaleTests in 'Domain\WAEditor.Tests.Domain.FontSizeScaleTests.pas',
   WAEditor.Tests.Fakes.FakeHtmlEditorEngine in 'Fakes\WAEditor.Tests.Fakes.FakeHtmlEditorEngine.pas',
   WAEditor.Tests.Fakes.FakeHtmlDocumentStorage in 'Fakes\WAEditor.Tests.Fakes.FakeHtmlDocumentStorage.pas',
   WAEditor.Tests.Application.CommandTests in 'Application\WAEditor.Tests.Application.CommandTests.pas',
