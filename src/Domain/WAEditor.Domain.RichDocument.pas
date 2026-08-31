@@ -66,6 +66,25 @@ type
     function AddRow: TWATableRow;
   end;
 
+  TWAListKind = (lkUnordered, lkOrdered);
+
+  TWAListItem = class
+  public
+    Runs: TObjectList<TWARun>;
+    constructor Create;
+    destructor Destroy; override;
+    function AddRun(const AText: string; const AFormat: TWARunFormat): TWARun;
+  end;
+
+  TWAListBlock = class(TWABlock)
+  public
+    Kind: TWAListKind;
+    Items: TObjectList<TWAListItem>;
+    constructor Create(AKind: TWAListKind);
+    destructor Destroy; override;
+    function AddItem: TWAListItem;
+  end;
+
   TWARichDocument = class
   public
     Blocks: TObjectList<TWABlock>;
@@ -73,6 +92,7 @@ type
     destructor Destroy; override;
     function AddParagraph(AAlignment: TWATextAlignment = taLeftAlign): TWAParagraphBlock;
     function AddTable(ARowCount, AColumnCount: Integer; ABorderWidth: Integer = 1): TWATableBlock;
+    function AddList(AKind: TWAListKind): TWAListBlock;
   end;
 
 implementation
@@ -192,6 +212,47 @@ begin
   Rows.Add(Result);
 end;
 
+{ TWAListItem }
+
+constructor TWAListItem.Create;
+begin
+  inherited Create;
+  Runs := TObjectList<TWARun>.Create(True);
+end;
+
+destructor TWAListItem.Destroy;
+begin
+  Runs.Free;
+  inherited Destroy;
+end;
+
+function TWAListItem.AddRun(const AText: string; const AFormat: TWARunFormat): TWARun;
+begin
+  Result := TWARun.Create(AText, AFormat);
+  Runs.Add(Result);
+end;
+
+{ TWAListBlock }
+
+constructor TWAListBlock.Create(AKind: TWAListKind);
+begin
+  inherited Create;
+  Kind := AKind;
+  Items := TObjectList<TWAListItem>.Create(True);
+end;
+
+destructor TWAListBlock.Destroy;
+begin
+  Items.Free;
+  inherited Destroy;
+end;
+
+function TWAListBlock.AddItem: TWAListItem;
+begin
+  Result := TWAListItem.Create;
+  Items.Add(Result);
+end;
+
 { TWARichDocument }
 
 constructor TWARichDocument.Create;
@@ -226,6 +287,12 @@ begin
     for C := 1 to AColumnCount do
       LRow.AddCell;
   end;
+end;
+
+function TWARichDocument.AddList(AKind: TWAListKind): TWAListBlock;
+begin
+  Result := TWAListBlock.Create(AKind);
+  Blocks.Add(Result);
 end;
 
 end.
