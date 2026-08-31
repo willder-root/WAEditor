@@ -65,6 +65,15 @@ type
 
     [Test]
     procedure Parse_ConsecutiveBlankRtfLines_ProduceOneEmptyParagraphEach;
+
+    [Test]
+    procedure Parse_LineControlWord_InsertsLineBreakRunWithoutSplittingParagraph;
+
+    [Test]
+    procedure Parse_BorderControlWords_SetHasBorderOnParagraph;
+
+    [Test]
+    procedure Parse_PlainControlWord_ResetsCharacterFormattingBetweenParagraphs;
   end;
 
 implementation
@@ -377,6 +386,62 @@ begin
     Assert.AreEqual(4, LDocument.Blocks.Count);
     Assert.AreEqual(0, TWAParagraphBlock(LDocument.Blocks[1]).Runs.Count);
     Assert.AreEqual(0, TWAParagraphBlock(LDocument.Blocks[2]).Runs.Count);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_LineControlWord_InsertsLineBreakRunWithoutSplittingParagraph;
+var
+  LDocument: TWARichDocument;
+  LParagraph: TWAParagraphBlock;
+begin
+  // \line is a soft break within one paragraph, not a paragraph
+  // boundary: it must not produce a second TWAParagraphBlock (which
+  // would turn one line break into two <p> when rendered to HTML).
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 \pard\ql Line one\line Line two\par}');
+  try
+    Assert.AreEqual(1, LDocument.Blocks.Count);
+    LParagraph := TWAParagraphBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(3, LParagraph.Runs.Count);
+    Assert.AreEqual('Line one', LParagraph.Runs[0].Text);
+    Assert.IsTrue(LParagraph.Runs[1].IsLineBreak);
+    Assert.AreEqual('Line two', LParagraph.Runs[2].Text);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_BorderControlWords_SetHasBorderOnParagraph;
+var
+  LDocument: TWARichDocument;
+begin
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 \pard\plain\brdrl\brdrs\brdrr\brdrs\brdrt\brdrs\brdrb\brdrs\plain Boxed\par' +
+    '\pard\ql Not boxed\par}');
+  try
+    Assert.IsTrue(TWAParagraphBlock(LDocument.Blocks[0]).HasBorder);
+    Assert.IsFalse(TWAParagraphBlock(LDocument.Blocks[1]).HasBorder);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_PlainControlWord_ResetsCharacterFormattingBetweenParagraphs;
+var
+  LDocument: TWARichDocument;
+begin
+  // Writers that don't scope each run in its own {...} group rely on
+  // \plain between paragraphs to reset bold/italic/underline/font; if
+  // \plain is ignored, formatting bleeds from one paragraph into the
+  // next one that doesn't explicitly override it.
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 \pard\ql \plain\b Bold text\par' +
+    '\pard\ql \plain Plain text\par}');
+  try
+    Assert.IsTrue(TWAParagraphBlock(LDocument.Blocks[0]).Runs[0].Format.Bold);
+    Assert.IsFalse(TWAParagraphBlock(LDocument.Blocks[1]).Runs[0].Format.Bold);
   finally
     LDocument.Free;
   end;

@@ -44,6 +44,9 @@ type
 
     [Test]
     procedure Parse_OrderedList_ProducesOrderedListBlock;
+
+    [Test]
+    procedure Parse_BrTag_InsertsLineBreakRunWithoutSplittingParagraph;
   end;
 
 implementation
@@ -206,6 +209,27 @@ begin
     Assert.AreEqual(Ord(lkOrdered), Ord(LList.Kind));
     Assert.AreEqual('Step one', LList.Items[0].Runs[0].Text);
     Assert.IsTrue(LList.Items[0].Runs[0].Format.Bold);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_BrTag_InsertsLineBreakRunWithoutSplittingParagraph;
+var
+  LDocument: TWARichDocument;
+  LParagraph: TWAParagraphBlock;
+begin
+  // A <br> is a soft break within one paragraph, not a paragraph
+  // boundary: it must not produce a second TWAParagraphBlock (which
+  // would turn one line break into two \par when rendered to RTF).
+  LDocument := TWAHtmlDocumentParser.Parse('<p>Line one<br>Line two</p>');
+  try
+    Assert.AreEqual(1, LDocument.Blocks.Count);
+    LParagraph := TWAParagraphBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(3, LParagraph.Runs.Count);
+    Assert.AreEqual('Line one', LParagraph.Runs[0].Text);
+    Assert.IsTrue(LParagraph.Runs[1].IsLineBreak);
+    Assert.AreEqual('Line two', LParagraph.Runs[2].Text);
   finally
     LDocument.Free;
   end;

@@ -35,6 +35,9 @@ type
 
     [Test]
     procedure Render_Paragraph_EmitsZeroMarginToAvoidHostSpacing;
+
+    [Test]
+    procedure Render_LineBreakRun_EmitsSingleBrTagNotNewParagraph;
   end;
 
 implementation
@@ -186,6 +189,31 @@ begin
     LHtml := TWAHtmlDocumentRenderer.Render(LDocument);
 
     Assert.Contains(LHtml, 'margin:0;');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentRendererTests.Render_LineBreakRun_EmitsSingleBrTagNotNewParagraph;
+var
+  LDocument: TWARichDocument;
+  LParagraph: TWAParagraphBlock;
+  LHtml: string;
+begin
+  LDocument := TWARichDocument.Create;
+  try
+    LParagraph := LDocument.AddParagraph;
+    LParagraph.AddRun('Line one', TWARunFormat.Plain);
+    LParagraph.Runs.Add(TWARun.CreateLineBreak);
+    LParagraph.AddRun('Line two', TWARunFormat.Plain);
+
+    LHtml := TWAHtmlDocumentRenderer.Render(LDocument);
+
+    // A single, unsplit paragraph: if <br> had wrongly started a new
+    // TWAParagraphBlock, "Line one" and "Line two" would land in
+    // separate <p>...</p> elements instead of sharing one.
+    Assert.Contains(LHtml, 'Line one<br>Line two');
+    Assert.IsFalse(LHtml.Contains('</p><p'));
   finally
     LDocument.Free;
   end;

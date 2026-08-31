@@ -38,12 +38,32 @@ type
 
     [Test]
     procedure Render_OrderedList_EmitsIncrementingNumberMarkerPerItem;
+
+    [Test]
+    procedure Render_LineBreakRun_EmitsSingleLineControlWordNotPar;
+
+    [Test]
+    procedure Render_ParagraphWithBorder_EmitsBorderControlWords;
   end;
 
 implementation
 
 uses
-  System.SysUtils;
+  System.SysUtils,
+  System.StrUtils;
+
+function CountOccurrences(const AText, ASubstring: string): Integer;
+var
+  LPosition: Integer;
+begin
+  Result := 0;
+  LPosition := PosEx(ASubstring, AText, 1);
+  while LPosition > 0 do
+  begin
+    Inc(Result);
+    LPosition := PosEx(ASubstring, AText, LPosition + Length(ASubstring));
+  end;
+end;
 
 procedure TWARtfDocumentRendererTests.Render_StartsWithRtfHeaderAndFontTable;
 var
@@ -206,6 +226,55 @@ begin
 
     Assert.Contains(LRtf, '1.\tab');
     Assert.Contains(LRtf, '2.\tab');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentRendererTests.Render_LineBreakRun_EmitsSingleLineControlWordNotPar;
+var
+  LDocument: TWARichDocument;
+  LParagraph: TWAParagraphBlock;
+  LRtf: string;
+begin
+  LDocument := TWARichDocument.Create;
+  try
+    LParagraph := LDocument.AddParagraph;
+    LParagraph.AddRun('Line one', TWARunFormat.Plain);
+    LParagraph.Runs.Add(TWARun.CreateLineBreak);
+    LParagraph.AddRun('Line two', TWARunFormat.Plain);
+
+    LRtf := TWARtfDocumentRenderer.Render(LDocument);
+
+    // A single paragraph: if the line break had wrongly closed one
+    // paragraph and opened another, there would be a second \par
+    // terminator. Search for '\par' + a line break specifically since
+    // '\par' alone is also a prefix of '\pard'.
+    Assert.Contains(LRtf, '\line');
+    Assert.AreEqual(1, CountOccurrences(LRtf, '\par' + sLineBreak));
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentRendererTests.Render_ParagraphWithBorder_EmitsBorderControlWords;
+var
+  LDocument: TWARichDocument;
+  LParagraph: TWAParagraphBlock;
+  LRtf: string;
+begin
+  LDocument := TWARichDocument.Create;
+  try
+    LParagraph := LDocument.AddParagraph;
+    LParagraph.HasBorder := True;
+    LParagraph.AddRun('Boxed', TWARunFormat.Plain);
+
+    LRtf := TWARtfDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LRtf, '\brdrl');
+    Assert.Contains(LRtf, '\brdrr');
+    Assert.Contains(LRtf, '\brdrt');
+    Assert.Contains(LRtf, '\brdrb');
   finally
     LDocument.Free;
   end;
