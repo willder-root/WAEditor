@@ -13,10 +13,16 @@ uses
   WAEditor.Tests.Domain.AlignmentMapperTests in 'Domain\WAEditor.Tests.Domain.AlignmentMapperTests.pas',
   WAEditor.Tests.Domain.TableHtmlBuilderTests in 'Domain\WAEditor.Tests.Domain.TableHtmlBuilderTests.pas',
   WAEditor.Tests.Domain.FontSizeScaleTests in 'Domain\WAEditor.Tests.Domain.FontSizeScaleTests.pas',
+  WAEditor.Tests.Domain.HtmlDocumentRendererTests in 'Domain\WAEditor.Tests.Domain.HtmlDocumentRendererTests.pas',
+  WAEditor.Tests.Domain.RtfDocumentRendererTests in 'Domain\WAEditor.Tests.Domain.RtfDocumentRendererTests.pas',
+  WAEditor.Tests.Domain.HtmlDocumentParserTests in 'Domain\WAEditor.Tests.Domain.HtmlDocumentParserTests.pas',
+  WAEditor.Tests.Domain.RtfDocumentParserTests in 'Domain\WAEditor.Tests.Domain.RtfDocumentParserTests.pas',
+  WAEditor.Tests.Domain.RichDocumentRoundTripTests in 'Domain\WAEditor.Tests.Domain.RichDocumentRoundTripTests.pas',
   WAEditor.Tests.Fakes.FakeHtmlEditorEngine in 'Fakes\WAEditor.Tests.Fakes.FakeHtmlEditorEngine.pas',
   WAEditor.Tests.Fakes.FakeHtmlDocumentStorage in 'Fakes\WAEditor.Tests.Fakes.FakeHtmlDocumentStorage.pas',
   WAEditor.Tests.Application.CommandTests in 'Application\WAEditor.Tests.Application.CommandTests.pas',
-  WAEditor.Tests.Application.DocumentServiceTests in 'Application\WAEditor.Tests.Application.DocumentServiceTests.pas';
+  WAEditor.Tests.Application.DocumentServiceTests in 'Application\WAEditor.Tests.Application.DocumentServiceTests.pas',
+  WAEditor.Tests.Application.RtfDocumentServiceTests in 'Application\WAEditor.Tests.Application.RtfDocumentServiceTests.pas';
 
 var
   Runner: ITestRunner;
