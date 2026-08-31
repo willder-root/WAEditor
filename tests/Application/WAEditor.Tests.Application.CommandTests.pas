@@ -53,6 +53,12 @@ type
 
     [Test]
     procedure ToggleUnderlineCommand_Execute_FlipsUnderlineState;
+
+    [Test]
+    procedure ToggleUnorderedListCommand_Execute_FlipsUnorderedListState;
+
+    [Test]
+    procedure ToggleOrderedListCommand_Execute_FlipsOrderedListState;
   end;
 
 implementation
@@ -64,7 +70,9 @@ uses
   WAEditor.Application.Commands.InsertTableCommand,
   WAEditor.Application.Commands.ToggleBoldCommand,
   WAEditor.Application.Commands.ToggleItalicCommand,
-  WAEditor.Application.Commands.ToggleUnderlineCommand;
+  WAEditor.Application.Commands.ToggleUnderlineCommand,
+  WAEditor.Application.Commands.ToggleUnorderedListCommand,
+  WAEditor.Application.Commands.ToggleOrderedListCommand;
 
 procedure TWACommandTests.Setup;
 begin
@@ -206,6 +214,36 @@ begin
   try
     LCommand.Execute;
     Assert.IsTrue(FEngine.IsUnderline);
+  finally
+    LCommand.Free;
+  end;
+end;
+
+procedure TWACommandTests.ToggleUnorderedListCommand_Execute_FlipsUnorderedListState;
+var
+  LCommand: TWAToggleUnorderedListCommand;
+begin
+  LCommand := TWAToggleUnorderedListCommand.Create(FEngine);
+  try
+    Assert.IsFalse(FEngine.IsUnorderedList);
+    LCommand.Execute;
+    Assert.IsTrue(FEngine.IsUnorderedList);
+    LCommand.Execute;
+    Assert.IsFalse(FEngine.IsUnorderedList);
+  finally
+    LCommand.Free;
+  end;
+end;
+
+procedure TWACommandTests.ToggleOrderedListCommand_Execute_FlipsOrderedListState;
+var
+  LCommand: TWAToggleOrderedListCommand;
+begin
+  LCommand := TWAToggleOrderedListCommand.Create(FEngine);
+  try
+    Assert.IsFalse(FEngine.IsOrderedList);
+    LCommand.Execute;
+    Assert.IsTrue(FEngine.IsOrderedList);
   finally
     LCommand.Free;
   end;
