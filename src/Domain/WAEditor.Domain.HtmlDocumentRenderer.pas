@@ -35,6 +35,9 @@ function RenderRun(ARun: TWARun): string;
 var
   LStyle: string;
 begin
+  if ARun.IsLineBreak then
+    Exit('<br>');
+
   Result := EscapeHtml(ARun.Text);
   if ARun.Format.Underline then
     Result := '<u>' + Result + '</u>';
@@ -67,7 +70,10 @@ begin
     // document, where adjacent margins don't collapse), stacks up on
     // both neighbors instead of collapsing, visibly multiplying blank
     // lines.
-    LBuilder.AppendFormat('<p style="margin:0;text-align:%s;">',
+    LBuilder.Append('<p style="margin:0;');
+    if AParagraph.HasBorder then
+      LBuilder.Append('border:1px solid #000000;padding:2px;');
+    LBuilder.AppendFormat('text-align:%s;">',
       [TWAAlignmentMapper.ToHtmlAttribute(AParagraph.Alignment)]);
     for LRun in AParagraph.Runs do
       LBuilder.Append(RenderRun(LRun));

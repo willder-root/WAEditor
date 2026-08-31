@@ -152,6 +152,9 @@ function RenderRunGroup(ARun: TWARun; AFontTable: TWAFontTable): string;
 var
   LControlWords: string;
 begin
+  if ARun.IsLineBreak then
+    Exit('\line' + sLineBreak);
+
   LControlWords := '';
   if ARun.Format.FontName <> '' then
     LControlWords := LControlWords + Format('\f%d', [AFontTable.IndexOf(ARun.Format.FontName)]);
@@ -188,7 +191,10 @@ var
 begin
   LBuilder := TStringBuilder.Create;
   try
-    LBuilder.Append('\pard').Append(AlignmentControlWord(AParagraph.Alignment)).Append(' ');
+    LBuilder.Append('\pard').Append(AlignmentControlWord(AParagraph.Alignment));
+    if AParagraph.HasBorder then
+      LBuilder.Append('\brdrl\brdrs\brdrr\brdrs\brdrt\brdrs\brdrb\brdrs');
+    LBuilder.Append(' ');
     for LRun in AParagraph.Runs do
       LBuilder.Append(RenderRunGroup(LRun, AFontTable));
     LBuilder.Append('\par').Append(sLineBreak);
