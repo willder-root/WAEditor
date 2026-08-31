@@ -53,6 +53,9 @@ type
 
     [Test]
     procedure Parse_EmptyFontFamilyValue_DoesNotRaise;
+
+    [Test]
+    procedure Parse_ListItemWrappingContentInP_DoesNotCreateStrayParagraph;
   end;
 
 implementation
@@ -269,6 +272,30 @@ begin
     '<p><span style="font-family:;font-size:12pt;">Text</span></p>');
   try
     Assert.AreEqual('', TWAParagraphBlock(LDocument.Blocks[0]).Runs[0].Format.FontName);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_ListItemWrappingContentInP_DoesNotCreateStrayParagraph;
+var
+  LDocument: TWARichDocument;
+  LList: TWAListBlock;
+begin
+  // A live WYSIWYG surface (e.g. MSHTML) commonly wraps each <li>'s
+  // content in its own <p>: <ul><li><p>text</p></li></ul>. That nested
+  // <p> must not create a stray top-level empty paragraph -- it did,
+  // once per list item, growing the document a little on every
+  // RTF/HTML round trip through a real editor.
+  LDocument := TWAHtmlDocumentParser.Parse(
+    '<ul><li><p><span style="font-size:11pt;">First item</span></p></li>' +
+    '<li><p><span style="font-size:11pt;">Second item</span></p></li></ul>');
+  try
+    Assert.AreEqual(1, LDocument.Blocks.Count);
+    LList := TWAListBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(2, LList.Items.Count);
+    Assert.AreEqual('First item', LList.Items[0].Runs[0].Text);
+    Assert.AreEqual('Second item', LList.Items[1].Runs[0].Text);
   finally
     LDocument.Free;
   end;
