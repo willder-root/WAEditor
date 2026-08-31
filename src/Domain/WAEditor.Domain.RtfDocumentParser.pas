@@ -45,6 +45,17 @@ type
     FCurrentTable: TWATableBlock;
     FCurrentRow: TWATableRow;
     FCurrentCell: TWATableCell;
+    FCurrentList: TWAListBlock;
+    FCurrentListItem: TWAListItem;
+    // A list item is rendered as \pard\fi-360\li720 followed by a literal
+    // \bullet or "N." marker and \tab (see TWARtfDocumentRenderer). These
+    // two flags track, respectively, "the paragraph now open is a list
+    // item" and "we are still inside its marker, before real content
+    // starts" so the marker text/control words can be recognized and
+    // stripped instead of becoming part of the item's runs.
+    FListItemPending: Boolean;
+    FMarkerPending: Boolean;
+    FOrdinalBuffer: string;
 
     function AtEnd: Boolean;
     function PeekKeywordAfterWhitespace: string;
@@ -130,7 +141,7 @@ end;
 
 procedure TWARtfParserState.EnsureParagraph;
 begin
-  if (FCurrentCell = nil) and (FCurrentParagraph = nil) then
+  if (FCurrentCell = nil) and (FCurrentListItem = nil) and (FCurrentParagraph = nil) then
     FCurrentParagraph := FDocument.AddParagraph(FCurrentAlignment);
 end;
 
@@ -141,6 +152,18 @@ end;
 
 procedure TWARtfParserState.AppendChar(AChar: Char);
 begin
+  if FMarkerPending then
+  begin
+    if CharInSet(AChar, ['0'..'9']) then
+    begin
+      FOrdinalBuffer := FOrdinalBuffer + AChar;
+      Exit;
+    end;
+    if AChar = '.' then
+      Exit; // ordinal separator, e.g. the '.' in "1."; discarded either way
+    FMarkerPending := False; // unexpected char: stop treating this as a marker
+  end;
+
   if FCurrentCell <> nil then
   begin
     if (FCurrentCell.Runs.Count > 0) and
@@ -148,6 +171,14 @@ begin
       FCurrentCell.Runs.Last.Text := FCurrentCell.Runs.Last.Text + AChar
     else
       FCurrentCell.AddRun(AChar, FCurrentFormat);
+  end
+  else if FCurrentListItem <> nil then
+  begin
+    if (FCurrentListItem.Runs.Count > 0) and
+       FCurrentListItem.Runs.Last.Format.EqualsFormat(FCurrentFormat) then
+      FCurrentListItem.Runs.Last.Text := FCurrentListItem.Runs.Last.Text + AChar
+    else
+      FCurrentListItem.AddRun(AChar, FCurrentFormat);
   end
   else
   begin
@@ -168,10 +199,59 @@ begin
   if AName = 'par' then
   begin
     if FCurrentCell = nil then
-      ClosePendingParagraph;
+    begin
+      if FListItemPending then
+        FCurrentListItem := nil // ready for the next \pard\fi-360 item, if any
+      else
+      begin
+        FCurrentList := nil; // a plain paragraph ends any list that was open
+        FCurrentListItem := nil;
+        ClosePendingParagraph;
+      end;
+    end;
   end
   else if AName = 'pard' then
-    FCurrentAlignment := taLeftAlign
+  begin
+    FCurrentAlignment := taLeftAlign;
+    FListItemPending := False;
+  end
+  else if AName = 'fi' then
+  begin
+    if AHasParam and (AParam < 0) then
+    begin
+      FListItemPending := True;
+      FMarkerPending := True;
+      FOrdinalBuffer := '';
+      if FCurrentList = nil then
+        FCurrentList := FDocument.AddList(lkUnordered); // corrected below once the marker is read
+      FCurrentListItem := FCurrentList.AddItem;
+    end;
+  end
+  else if AName = 'bullet' then
+  begin
+    if FMarkerPending then
+    begin
+      if FCurrentList <> nil then
+        FCurrentList.Kind := lkUnordered;
+    end
+    else
+      AppendChar(Chr($2022)); // literal bullet character outside a marker
+  end
+  else if AName = 'tab' then
+  begin
+    if FMarkerPending then
+    begin
+      if FOrdinalBuffer <> '' then
+      begin
+        if FCurrentList <> nil then
+          FCurrentList.Kind := lkOrdered;
+        FOrdinalBuffer := '';
+      end;
+      FMarkerPending := False;
+    end
+    else
+      AppendChar(#9);
+  end
   else if AName = 'ql' then
     FCurrentAlignment := taLeftAlign
   else if AName = 'qc' then
