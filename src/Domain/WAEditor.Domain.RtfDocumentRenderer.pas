@@ -170,6 +170,27 @@ var
 begin
   if ARun.IsLineBreak then
     Exit('\line' + sLineBreak);
+  if ARun.IsCheckbox then
+  begin
+    // A minimal Word-style FORMCHECKBOX field, matching the
+    // "_Check=true/false" vs "_Radio=on/off" vocabulary a real-world
+    // writer (WPTools) uses for the two kinds. \fldinst/\fldrslt are
+    // marked \* (ignorable-if-unsupported) per RTF convention, so a
+    // reader without form-field support simply skips them rather than
+    // showing raw field-code text; this project's own parser looks for
+    // the "_Radio"/"=true"/"=on" markers to recover the kind and state.
+    if ARun.IsRadio then
+    begin
+      if ARun.IsChecked then
+        Exit('{\field{\*\fldinst{FORMCHECKBOX _Radio=on}}{\*\fldrslt{on}}}')
+      else
+        Exit('{\field{\*\fldinst{FORMCHECKBOX _Radio=off}}{\*\fldrslt{off}}}');
+    end;
+    if ARun.IsChecked then
+      Exit('{\field{\*\fldinst{FORMCHECKBOX _Check=true}}{\*\fldrslt{true}}}')
+    else
+      Exit('{\field{\*\fldinst{FORMCHECKBOX _Check=false}}{\*\fldrslt{false}}}');
+  end;
 
   LControlWords := '';
   if ARun.Format.FontName <> '' then

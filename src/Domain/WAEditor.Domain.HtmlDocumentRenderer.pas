@@ -37,6 +37,24 @@ var
 begin
   if ARun.IsLineBreak then
     Exit('<br>');
+  if ARun.IsCheckbox then
+  begin
+    // A plain Unicode glyph rather than <input type="checkbox"/"radio">:
+    // it round-trips as ordinary text through the WYSIWYG surface and
+    // any HTML consumer, with no dependency on form-control behavior
+    // that a contentEditable host may not preserve reliably.
+    if ARun.IsRadio then
+    begin
+      if ARun.IsChecked then
+        Exit(WA_CHECKED_RADIO_GLYPH)
+      else
+        Exit(WA_UNCHECKED_RADIO_GLYPH);
+    end;
+    if ARun.IsChecked then
+      Exit(WA_CHECKED_BOX_GLYPH)
+    else
+      Exit(WA_UNCHECKED_BOX_GLYPH);
+  end;
 
   Result := EscapeHtml(ARun.Text);
   if ARun.Format.Underline then
