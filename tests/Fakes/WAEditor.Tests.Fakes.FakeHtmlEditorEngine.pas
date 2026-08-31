@@ -15,6 +15,8 @@ type
     FBold: Boolean;
     FItalic: Boolean;
     FUnderline: Boolean;
+    FUnorderedList: Boolean;
+    FOrderedList: Boolean;
     FFontName: string;
     FFontSize: Integer;
     FAlignment: TWATextAlignment;
@@ -32,11 +34,15 @@ type
     procedure SetFontName(const AFontName: string);
     procedure SetFontSize(ASizeInPoints: Integer);
     procedure SetTextAlignment(AAlignment: TWATextAlignment);
+    procedure SetUnorderedList(AEnabled: Boolean);
+    procedure SetOrderedList(AEnabled: Boolean);
     procedure InsertHtml(const AHtml: string);
 
     function IsBold: Boolean;
     function IsItalic: Boolean;
     function IsUnderline: Boolean;
+    function IsUnorderedList: Boolean;
+    function IsOrderedList: Boolean;
 
     function GetHtml: string;
     procedure SetHtml(const AHtml: string);
@@ -91,6 +97,16 @@ begin
   Inc(FSetAlignmentCallCount);
 end;
 
+procedure TFakeHtmlEditorEngine.SetUnorderedList(AEnabled: Boolean);
+begin
+  FUnorderedList := AEnabled;
+end;
+
+procedure TFakeHtmlEditorEngine.SetOrderedList(AEnabled: Boolean);
+begin
+  FOrderedList := AEnabled;
+end;
+
 procedure TFakeHtmlEditorEngine.InsertHtml(const AHtml: string);
 begin
   FLastInsertedHtml := AHtml;
@@ -110,6 +126,16 @@ end;
 function TFakeHtmlEditorEngine.IsUnderline: Boolean;
 begin
   Result := FUnderline;
+end;
+
+function TFakeHtmlEditorEngine.IsUnorderedList: Boolean;
+begin
+  Result := FUnorderedList;
+end;
+
+function TFakeHtmlEditorEngine.IsOrderedList: Boolean;
+begin
+  Result := FOrderedList;
 end;
 
 function TFakeHtmlEditorEngine.GetHtml: string;
