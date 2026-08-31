@@ -72,6 +72,8 @@ type
     procedure ParseFontEntry;
     procedure ParseTableGroup;
     procedure ParseListTextGroup;
+    procedure ParseFieldGroup;
+    procedure AppendCheckbox(AChecked: Boolean; AIsRadio: Boolean);
     procedure SkipGroup;
 
     procedure HandleControlWord(const AName: string; AHasParam: Boolean; AParam: Integer);
@@ -164,6 +166,8 @@ begin
       Result := 'trowd'
     else if MatchesControlWordAt(FPos, 'listtext') then
       Result := 'listtext'
+    else if MatchesControlWordAt(FPos, 'field') then
+      Result := 'field'
     else
       for I := Low(WA_SKIPPABLE_DESTINATIONS) to High(WA_SKIPPABLE_DESTINATIONS) do
         if MatchesControlWordAt(FPos, WA_SKIPPABLE_DESTINATIONS[I]) then
@@ -240,6 +244,19 @@ begin
   begin
     EnsureParagraph;
     FCurrentParagraph.Runs.Add(TWARun.CreateLineBreak);
+  end;
+end;
+
+procedure TWARtfParserState.AppendCheckbox(AChecked: Boolean; AIsRadio: Boolean);
+begin
+  if FCurrentCell <> nil then
+    FCurrentCell.Runs.Add(TWARun.CreateCheckbox(AChecked, AIsRadio))
+  else if FCurrentListItem <> nil then
+    FCurrentListItem.Runs.Add(TWARun.CreateCheckbox(AChecked, AIsRadio))
+  else
+  begin
+    EnsureParagraph;
+    FCurrentParagraph.Runs.Add(TWARun.CreateCheckbox(AChecked, AIsRadio));
   end;
 end;
 
@@ -611,6 +628,65 @@ begin
   FCurrentListItem := FCurrentList.AddItem;
 end;
 
+procedure TWARtfParserState.ParseFieldGroup;
+// A Word-style form field: {\field{\*\fldinst FORMCHECKBOX ...}
+// {\*\fldrslt ...}}. Unlike SkipGroup (used for destinations this
+// model has no representation for at all), a \field's content is
+// scanned into a plain-text buffer -- including inside its \*-marked
+// \fldinst/\fldrslt sub-groups, which a generic \* skip would
+// otherwise discard entirely -- so the "_Check="/"_Radio="/"=true"/
+// "=on" markers this project's own renderer (and WPTools) use to
+// encode the field's kind and state can be recovered from it.
+var
+  LDepth: Integer;
+  LBuffer: string;
+  LIsRadio, LChecked: Boolean;
+begin
+  Inc(FPos, 6); // consume '\field'
+  LDepth := 1;
+  LBuffer := '';
+  while (not AtEnd) and (LDepth > 0) do
+  begin
+    case FRtf[FPos] of
+      '\':
+        begin
+          Inc(FPos);
+          if AtEnd then
+            Break;
+          if CharInSet(FRtf[FPos], ['\', '{', '}']) then
+          begin
+            LBuffer := LBuffer + FRtf[FPos];
+            Inc(FPos);
+          end
+          else if FRtf[FPos] = '''' then
+            Inc(FPos, 3)
+          else if IsAsciiLetter(FRtf[FPos]) then
+          begin
+            while (not AtEnd) and IsAsciiLetter(FRtf[FPos]) do
+              Inc(FPos);
+            if (not AtEnd) and (FRtf[FPos] = '-') then
+              Inc(FPos);
+            while (not AtEnd) and IsAsciiDigit(FRtf[FPos]) do
+              Inc(FPos);
+            if (not AtEnd) and (FRtf[FPos] = ' ') then
+              Inc(FPos);
+          end
+          else
+            Inc(FPos);
+        end;
+      '{': begin Inc(LDepth); Inc(FPos); end;
+      '}': begin Dec(LDepth); Inc(FPos); end;
+    else
+      LBuffer := LBuffer + FRtf[FPos];
+      Inc(FPos);
+    end;
+  end;
+
+  LIsRadio := Pos('radio', LowerCase(LBuffer)) > 0;
+  LChecked := (Pos('=true', LowerCase(LBuffer)) > 0) or (Pos('=on', LowerCase(LBuffer)) > 0);
+  AppendCheckbox(LChecked, LIsRadio);
+end;
+
 procedure TWARtfParserState.SkipGroup;
 // Discards an entire ignorable/unsupported destination group (already
 // past its opening '{'), including any nested groups, without treating
@@ -677,6 +753,8 @@ begin
               ParseTableGroup
             else if LKeyword = 'listtext' then
               ParseListTextGroup
+            else if LKeyword = 'field' then
+              ParseFieldGroup
             else if LKeyword = 'skip' then
               SkipGroup
             else
