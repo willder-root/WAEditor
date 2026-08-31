@@ -31,11 +31,15 @@ type
     procedure SetFontName(const AFontName: string);
     procedure SetFontSize(ASizeInPoints: Integer);
     procedure SetTextAlignment(AAlignment: TWATextAlignment);
+    procedure SetUnorderedList(AEnabled: Boolean);
+    procedure SetOrderedList(AEnabled: Boolean);
     procedure InsertHtml(const AHtml: string);
 
     function IsBold: Boolean;
     function IsItalic: Boolean;
     function IsUnderline: Boolean;
+    function IsUnorderedList: Boolean;
+    function IsOrderedList: Boolean;
 
     function GetHtml: string;
     procedure SetHtml(const AHtml: string);
@@ -116,6 +120,18 @@ begin
   ExecCommand(TWAAlignmentMapper.ToExecCommandName(AAlignment));
 end;
 
+procedure TWAWebBrowserEditorEngine.SetUnorderedList(AEnabled: Boolean);
+begin
+  if IsUnorderedList <> AEnabled then
+    ExecCommand('InsertUnorderedList');
+end;
+
+procedure TWAWebBrowserEditorEngine.SetOrderedList(AEnabled: Boolean);
+begin
+  if IsOrderedList <> AEnabled then
+    ExecCommand('InsertOrderedList');
+end;
+
 procedure TWAWebBrowserEditorEngine.InsertHtml(const AHtml: string);
 begin
   ExecCommand('InsertHTML', AHtml);
@@ -134,6 +150,16 @@ end;
 function TWAWebBrowserEditorEngine.IsUnderline: Boolean;
 begin
   Result := QueryCommandState('Underline');
+end;
+
+function TWAWebBrowserEditorEngine.IsUnorderedList: Boolean;
+begin
+  Result := QueryCommandState('InsertUnorderedList');
+end;
+
+function TWAWebBrowserEditorEngine.IsOrderedList: Boolean;
+begin
+  Result := QueryCommandState('InsertOrderedList');
 end;
 
 function TWAWebBrowserEditorEngine.GetHtml: string;
