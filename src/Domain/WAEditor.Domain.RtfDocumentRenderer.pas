@@ -41,6 +41,8 @@ type
     property Names: TList<string> read FNames;
   end;
 
+function EscapeRtf(const AText: string): string; forward;
+
 constructor TWAFontTable.Create;
 begin
   inherited Create;
@@ -101,12 +103,26 @@ function TWAFontTable.RenderTableGroup: string;
 var
   LBuilder: TStringBuilder;
   I: Integer;
+  LFontName: string;
 begin
   LBuilder := TStringBuilder.Create;
   try
     LBuilder.Append('{\fonttbl');
     for I := 0 to FNames.Count - 1 do
-      LBuilder.AppendFormat('{\f%d %s;}', [I, FNames[I]]);
+    begin
+      // Defense in depth: a font name could in principle contain RTF's
+      // own special characters (\, {, }), which would otherwise corrupt
+      // the font table's brace structure and desynchronize every parser
+      // reading the rest of the document (this is exactly the failure
+      // mode reported against a third-party RTF reader). Escaping here
+      // guarantees a well-formed entry regardless of what produced the
+      // name; an empty name falls back to the default font rather than
+      // emitting a nameless entry.
+      LFontName := Trim(FNames[I]);
+      if LFontName = '' then
+        LFontName := WA_DEFAULT_RTF_FONT;
+      LBuilder.AppendFormat('{\f%d %s;}', [I, EscapeRtf(LFontName)]);
+    end;
     LBuilder.Append('}');
     Result := LBuilder.ToString;
   finally
