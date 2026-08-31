@@ -58,6 +58,7 @@ type
     FOrdinalBuffer: string;
 
     function AtEnd: Boolean;
+    function MatchesControlWordAt(APos: Integer; const AName: string): Boolean;
     function PeekKeywordAfterWhitespace: string;
     procedure SkipWhitespace;
     procedure EnsureParagraph;
@@ -68,6 +69,8 @@ type
     procedure ParseFontTableGroup;
     procedure ParseFontEntry;
     procedure ParseTableGroup;
+    procedure ParseListTextGroup;
+    procedure SkipGroup;
 
     procedure HandleControlWord(const AName: string; AHasParam: Boolean; AParam: Integer);
     procedure HandleBackslashEscape;
@@ -120,22 +123,53 @@ begin
     Inc(FPos);
 end;
 
+function TWARtfParserState.MatchesControlWordAt(APos: Integer; const AName: string): Boolean;
+var
+  LAfter: Integer;
+begin
+  LAfter := APos + 1 + Length(AName);
+  Result := (Copy(FRtf, APos, Length(AName) + 1) = '\' + AName) and
+    ((LAfter > FLength) or not IsAsciiLetter(FRtf[LAfter]));
+end;
+
 function TWARtfParserState.PeekKeywordAfterWhitespace: string;
+const
+  // Destinations that never contribute visible body text even when not
+  // marked with the generic \* "ignorable if unrecognized" prefix (many
+  // real-world writers omit \* on these even though the RTF spec treats
+  // them the same way \fonttbl is treated: known, but not body content).
+  WA_SKIPPABLE_DESTINATIONS: array[0..7] of string = (
+    'colortbl', 'stylesheet', 'info', 'rsidtbl', 'listtable',
+    'listoverridetable', 'generator', 'pict');
 var
   LSavedPos: Integer;
+  I: Integer;
 begin
   // Called with FPos still pointing at the '{' being examined; peek at
-  // whatever immediately follows it (skipping whitespace) to decide
-  // whether this brace opens a \fonttbl or table group.
+  // whatever immediately follows it (skipping whitespace) to decide how
+  // this group should be parsed.
   LSavedPos := FPos;
   Inc(FPos);
   SkipWhitespace;
-  if (not AtEnd) and (Copy(FRtf, FPos, 8) = '\fonttbl') then
-    Result := 'fonttbl'
-  else if (not AtEnd) and (Copy(FRtf, FPos, 6) = '\trowd') then
-    Result := 'trowd'
-  else
-    Result := '';
+  Result := '';
+  if not AtEnd then
+  begin
+    if Copy(FRtf, FPos, 2) = '\*' then
+      Result := 'skip' // \* marks an ignorable destination: always safe to skip whole
+    else if MatchesControlWordAt(FPos, 'fonttbl') then
+      Result := 'fonttbl'
+    else if MatchesControlWordAt(FPos, 'trowd') then
+      Result := 'trowd'
+    else if MatchesControlWordAt(FPos, 'listtext') then
+      Result := 'listtext'
+    else
+      for I := Low(WA_SKIPPABLE_DESTINATIONS) to High(WA_SKIPPABLE_DESTINATIONS) do
+        if MatchesControlWordAt(FPos, WA_SKIPPABLE_DESTINATIONS[I]) then
+        begin
+          Result := 'skip';
+          Break;
+        end;
+  end;
   FPos := LSavedPos;
 end;
 
@@ -217,7 +251,11 @@ begin
   end
   else if AName = 'fi' then
   begin
-    if AHasParam and (AParam < 0) then
+    // Only start a new item this way when one hasn't already been opened
+    // by a preceding {\listtext...} group (real-world \lsN-based lists
+    // carry their own list-item marker there; \fi-360 may still follow
+    // it purely for indentation and must not create a duplicate item).
+    if AHasParam and (AParam < 0) and (FCurrentListItem = nil) then
     begin
       FListItemPending := True;
       FMarkerPending := True;
@@ -469,6 +507,119 @@ begin
   end;
 end;
 
+procedure TWARtfParserState.ParseListTextGroup;
+// Real-world \lsN/\ilvlN lists (unlike this renderer's own \fi-360
+// convention) carry their visible marker in a {\listtext ...} destination
+// ahead of the item's actual text. Its content (a number, a tab, or a
+// single character from a symbol font standing in for a bullet) is
+// decorative only and must not become part of the item's runs; instead
+// it starts a new list item and, by checking whether the marker switched
+// to a non-default font (the common "Wingdings/Symbol single glyph"
+// bullet trick), infers whether the list is ordered or unordered.
+var
+  LSawNonDefaultFont: Boolean;
+  LDepth: Integer;
+  LNameStart, LDigitsStart: Integer;
+  LName: string;
+  LParam: Integer;
+  LHasParam: Boolean;
+begin
+  Inc(FPos, 9); // consume '\listtext'
+  LSawNonDefaultFont := False;
+  LDepth := 1;
+  while (not AtEnd) and (LDepth > 0) do
+  begin
+    case FRtf[FPos] of
+      '\':
+        begin
+          Inc(FPos);
+          if AtEnd then
+            Break;
+          if CharInSet(FRtf[FPos], ['\', '{', '}']) then
+            Inc(FPos)
+          else if FRtf[FPos] = '''' then
+            Inc(FPos, 3)
+          else if IsAsciiLetter(FRtf[FPos]) then
+          begin
+            LNameStart := FPos;
+            while (not AtEnd) and IsAsciiLetter(FRtf[FPos]) do
+              Inc(FPos);
+            LName := Copy(FRtf, LNameStart, FPos - LNameStart);
+            LDigitsStart := FPos;
+            while (not AtEnd) and IsAsciiDigit(FRtf[FPos]) do
+              Inc(FPos);
+            LHasParam := FPos > LDigitsStart;
+            if LHasParam then
+              LParam := StrToInt(Copy(FRtf, LDigitsStart, FPos - LDigitsStart))
+            else
+              LParam := 0;
+            if (not AtEnd) and (FRtf[FPos] = ' ') then
+              Inc(FPos);
+            if (LName = 'f') and LHasParam and (LParam <> 0) then
+              LSawNonDefaultFont := True;
+          end
+          else
+            Inc(FPos);
+        end;
+      '{': begin Inc(LDepth); Inc(FPos); end;
+      '}': begin Dec(LDepth); Inc(FPos); end;
+    else
+      Inc(FPos); // marker text/tab: decorative only, discarded
+    end;
+  end;
+
+  FListItemPending := True;
+  if FCurrentList = nil then
+    FCurrentList := FDocument.AddList(lkUnordered);
+  if LSawNonDefaultFont then
+    FCurrentList.Kind := lkUnordered
+  else
+    FCurrentList.Kind := lkOrdered;
+  FCurrentListItem := FCurrentList.AddItem;
+end;
+
+procedure TWARtfParserState.SkipGroup;
+// Discards an entire ignorable/unsupported destination group (already
+// past its opening '{'), including any nested groups, without treating
+// any of its plain text as document content.
+var
+  LDepth: Integer;
+begin
+  LDepth := 1;
+  while (not AtEnd) and (LDepth > 0) do
+  begin
+    case FRtf[FPos] of
+      '\':
+        begin
+          Inc(FPos);
+          if AtEnd then
+            Break;
+          if CharInSet(FRtf[FPos], ['\', '{', '}']) then
+            Inc(FPos)
+          else if FRtf[FPos] = '''' then
+            Inc(FPos, 3)
+          else if IsAsciiLetter(FRtf[FPos]) then
+          begin
+            while (not AtEnd) and IsAsciiLetter(FRtf[FPos]) do
+              Inc(FPos);
+            if (not AtEnd) and (FRtf[FPos] = '-') then
+              Inc(FPos);
+            while (not AtEnd) and IsAsciiDigit(FRtf[FPos]) do
+              Inc(FPos);
+            if (not AtEnd) and (FRtf[FPos] = ' ') then
+              Inc(FPos);
+          end
+          else
+            Inc(FPos);
+        end;
+      '{': begin Inc(LDepth); Inc(FPos); end;
+      '}': begin Dec(LDepth); Inc(FPos); end;
+    else
+      Inc(FPos);
+    end;
+  end;
+end;
+
 procedure TWARtfParserState.ParseGroup;
 var
   LSnapshot: TWARtfGroupSnapshot;
@@ -491,6 +642,10 @@ begin
               ParseFontTableGroup
             else if LKeyword = 'trowd' then
               ParseTableGroup
+            else if LKeyword = 'listtext' then
+              ParseListTextGroup
+            else if LKeyword = 'skip' then
+              SkipGroup
             else
               ParseGroup;
           end;
