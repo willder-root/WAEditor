@@ -11,6 +11,10 @@ type
   TWAFontSizeScale = class
   public
     class function ToHtmlLegacySize(APointSize: Integer): Integer; static;
+    /// Reverse of ToHtmlLegacySize: picks a representative point size for
+    /// a legacy HTML <font size="1".."7"> value found while parsing
+    /// markup produced by execCommand-based editors.
+    class function FromHtmlLegacySize(ALegacySize: Integer): Integer; static;
   end;
 
 implementation
@@ -38,6 +42,20 @@ begin
     Result := 6
   else
     Result := 7;
+end;
+
+class function TWAFontSizeScale.FromHtmlLegacySize(ALegacySize: Integer): Integer;
+const
+  WA_REPRESENTATIVE_POINTS: array[1..7] of Integer = (8, 10, 12, 14, 18, 24, 36);
+var
+  LClamped: Integer;
+begin
+  LClamped := ALegacySize;
+  if LClamped < 1 then
+    LClamped := 1
+  else if LClamped > 7 then
+    LClamped := 7;
+  Result := WA_REPRESENTATIVE_POINTS[LClamped];
 end;
 
 end.
