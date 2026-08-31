@@ -64,8 +64,9 @@
         <DCC_K>false</DCC_K>
         <GenDll>true</GenDll>
         <GenPackage>true</GenPackage>
-        <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
+        <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Vcl;Vcl.Imaging;Vcl.Touch;Vcl.Samples;Vcl.Shell;$(DCC_Namespace)</DCC_Namespace>
         <DCC_CBuilderOutput>All</DCC_CBuilderOutput>
+        <DCC_UnitSearchPath>src\Domain;src\Application\Interfaces;src\Application\Commands;src\Application\Services;src\Infrastructure\WebBrowser;src\Infrastructure\FileSystem;src\Presentation;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <SanitizedProjectName>WAEditor</SanitizedProjectName>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base_Android)'!=''">
@@ -110,6 +111,38 @@
             <MainSource>MainSource</MainSource>
         </DelphiCompile>
         <DCCReference Include="rtl.dcp"/>
+        <DCCReference Include="vcl.dcp"/>
+        <DCCReference Include="src\Domain\WAEditor.Domain.Types.pas"/>
+        <DCCReference Include="src\Domain\WAEditor.Domain.AlignmentMapper.pas"/>
+        <DCCReference Include="src\Domain\WAEditor.Domain.TableHtmlBuilder.pas"/>
+        <DCCReference Include="src\Domain\WAEditor.Domain.FontSizeScale.pas"/>
+        <DCCReference Include="src\Domain\WAEditor.Domain.RichDocument.pas"/>
+        <DCCReference Include="src\Domain\WAEditor.Domain.HtmlDocumentRenderer.pas"/>
+        <DCCReference Include="src\Domain\WAEditor.Domain.HtmlDocumentParser.pas"/>
+        <DCCReference Include="src\Domain\WAEditor.Domain.RtfDocumentRenderer.pas"/>
+        <DCCReference Include="src\Domain\WAEditor.Domain.RtfDocumentParser.pas"/>
+        <DCCReference Include="src\Application\Interfaces\WAEditor.Application.IHtmlEditorEngine.pas"/>
+        <DCCReference Include="src\Application\Interfaces\WAEditor.Application.IHtmlDocumentStorage.pas"/>
+        <DCCReference Include="src\Application\Interfaces\WAEditor.Application.ICommand.pas"/>
+        <DCCReference Include="src\Application\Commands\WAEditor.Application.Commands.SetFontNameCommand.pas"/>
+        <DCCReference Include="src\Application\Commands\WAEditor.Application.Commands.SetFontSizeCommand.pas"/>
+        <DCCReference Include="src\Application\Commands\WAEditor.Application.Commands.SetAlignmentCommand.pas"/>
+        <DCCReference Include="src\Application\Commands\WAEditor.Application.Commands.InsertTableCommand.pas"/>
+        <DCCReference Include="src\Application\Commands\WAEditor.Application.Commands.ToggleBoldCommand.pas"/>
+        <DCCReference Include="src\Application\Commands\WAEditor.Application.Commands.ToggleItalicCommand.pas"/>
+        <DCCReference Include="src\Application\Commands\WAEditor.Application.Commands.ToggleUnderlineCommand.pas"/>
+        <DCCReference Include="src\Application\Services\WAEditor.Application.DocumentService.pas"/>
+        <DCCReference Include="src\Application\Services\WAEditor.Application.RtfDocumentService.pas"/>
+        <DCCReference Include="src\Infrastructure\WebBrowser\WAEditor.Infrastructure.WebBrowserEditorEngine.pas"/>
+        <DCCReference Include="src\Infrastructure\FileSystem\WAEditor.Infrastructure.FileHtmlDocumentStorage.pas"/>
+        <DCCReference Include="src\Presentation\WAEditor.Presentation.InsertTableDialog.pas">
+            <Form>WAInsertTableDialog</Form>
+            <FormType>dfm</FormType>
+        </DCCReference>
+        <DCCReference Include="src\Presentation\WAEditor.Presentation.MainForm.pas">
+            <Form>WAMainForm</Form>
+            <FormType>dfm</FormType>
+        </DCCReference>
         <BuildConfiguration Include="Release">
             <Key>Cfg_2</Key>
             <CfgParent>Base</CfgParent>

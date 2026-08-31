@@ -28,6 +28,34 @@ package WAEditor;
 {$IMPLICITBUILD ON}
 
 requires
-  rtl;
+  rtl,
+  vcl;
+
+contains
+  WAEditor.Domain.Types in 'src\Domain\WAEditor.Domain.Types.pas',
+  WAEditor.Domain.AlignmentMapper in 'src\Domain\WAEditor.Domain.AlignmentMapper.pas',
+  WAEditor.Domain.TableHtmlBuilder in 'src\Domain\WAEditor.Domain.TableHtmlBuilder.pas',
+  WAEditor.Domain.FontSizeScale in 'src\Domain\WAEditor.Domain.FontSizeScale.pas',
+  WAEditor.Domain.RichDocument in 'src\Domain\WAEditor.Domain.RichDocument.pas',
+  WAEditor.Domain.HtmlDocumentRenderer in 'src\Domain\WAEditor.Domain.HtmlDocumentRenderer.pas',
+  WAEditor.Domain.HtmlDocumentParser in 'src\Domain\WAEditor.Domain.HtmlDocumentParser.pas',
+  WAEditor.Domain.RtfDocumentRenderer in 'src\Domain\WAEditor.Domain.RtfDocumentRenderer.pas',
+  WAEditor.Domain.RtfDocumentParser in 'src\Domain\WAEditor.Domain.RtfDocumentParser.pas',
+  WAEditor.Application.IHtmlEditorEngine in 'src\Application\Interfaces\WAEditor.Application.IHtmlEditorEngine.pas',
+  WAEditor.Application.IHtmlDocumentStorage in 'src\Application\Interfaces\WAEditor.Application.IHtmlDocumentStorage.pas',
+  WAEditor.Application.ICommand in 'src\Application\Interfaces\WAEditor.Application.ICommand.pas',
+  WAEditor.Application.Commands.SetFontNameCommand in 'src\Application\Commands\WAEditor.Application.Commands.SetFontNameCommand.pas',
+  WAEditor.Application.Commands.SetFontSizeCommand in 'src\Application\Commands\WAEditor.Application.Commands.SetFontSizeCommand.pas',
+  WAEditor.Application.Commands.SetAlignmentCommand in 'src\Application\Commands\WAEditor.Application.Commands.SetAlignmentCommand.pas',
+  WAEditor.Application.Commands.InsertTableCommand in 'src\Application\Commands\WAEditor.Application.Commands.InsertTableCommand.pas',
+  WAEditor.Application.Commands.ToggleBoldCommand in 'src\Application\Commands\WAEditor.Application.Commands.ToggleBoldCommand.pas',
+  WAEditor.Application.Commands.ToggleItalicCommand in 'src\Application\Commands\WAEditor.Application.Commands.ToggleItalicCommand.pas',
+  WAEditor.Application.Commands.ToggleUnderlineCommand in 'src\Application\Commands\WAEditor.Application.Commands.ToggleUnderlineCommand.pas',
+  WAEditor.Application.DocumentService in 'src\Application\Services\WAEditor.Application.DocumentService.pas',
+  WAEditor.Application.RtfDocumentService in 'src\Application\Services\WAEditor.Application.RtfDocumentService.pas',
+  WAEditor.Infrastructure.WebBrowserEditorEngine in 'src\Infrastructure\WebBrowser\WAEditor.Infrastructure.WebBrowserEditorEngine.pas',
+  WAEditor.Infrastructure.FileHtmlDocumentStorage in 'src\Infrastructure\FileSystem\WAEditor.Infrastructure.FileHtmlDocumentStorage.pas',
+  WAEditor.Presentation.InsertTableDialog in 'src\Presentation\WAEditor.Presentation.InsertTableDialog.pas' {WAInsertTableDialog},
+  WAEditor.Presentation.MainForm in 'src\Presentation\WAEditor.Presentation.MainForm.pas' {WAMainForm};
 
 end.
