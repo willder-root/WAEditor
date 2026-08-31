@@ -1,0 +1,460 @@
+unit WAEditor.Domain.RtfDocumentParser;
+
+interface
+
+uses
+  WAEditor.Domain.RichDocument;
+
+type
+  /// Parses the bounded RTF subset produced by TWARtfDocumentRenderer:
+  /// a font table, \pard/\par paragraphs with \ql/\qc/\qr/\qj alignment,
+  /// \b/\i/\ul/\f/\fs character formatting scoped by {...} groups, and
+  /// \trowd/\cellx/\intbl/\cell/\row tables wrapped in their own group.
+  /// This is not a general-purpose RTF engine: it targets exactly the
+  /// control words this editor's own writer emits, so round-tripping
+  /// RTF produced elsewhere is only best-effort.
+  TWARtfDocumentParser = class
+  public
+    class function Parse(const ARtf: string): TWARichDocument; static;
+  end;
+
+implementation
+
+uses
+  System.SysUtils,
+  System.Generics.Collections,
+  WAEditor.Domain.Types;
+
+type
+  TWARtfGroupSnapshot = record
+    Format: TWARunFormat;
+    Alignment: TWATextAlignment;
+  end;
+
+  TWARtfParserState = class
+  private
+    FRtf: string;
+    FPos: Integer;
+    FLength: Integer;
+    FDocument: TWARichDocument;
+    FFontTable: TDictionary<Integer, string>;
+    FGroupStack: TStack<TWARtfGroupSnapshot>;
+    FCurrentFormat: TWARunFormat;
+    FCurrentAlignment: TWATextAlignment;
+    FCurrentParagraph: TWAParagraphBlock;
+    FCurrentTable: TWATableBlock;
+    FCurrentRow: TWATableRow;
+    FCurrentCell: TWATableCell;
+
+    function AtEnd: Boolean;
+    function PeekKeywordAfterWhitespace: string;
+    procedure SkipWhitespace;
+    procedure EnsureParagraph;
+    procedure AppendChar(AChar: Char);
+    procedure ClosePendingParagraph;
+
+    procedure ParseGroup;
+    procedure ParseFontTableGroup;
+    procedure ParseFontEntry;
+    procedure ParseTableGroup;
+
+    procedure HandleControlWord(const AName: string; AHasParam: Boolean; AParam: Integer);
+    procedure HandleBackslashEscape;
+  public
+    constructor Create(const ARtf: string);
+    destructor Destroy; override;
+    function Parse: TWARichDocument;
+  end;
+
+function IsAsciiLetter(AChar: Char): Boolean;
+begin
+  Result := (AChar >= 'a') and (AChar <= 'z') or (AChar >= 'A') and (AChar <= 'Z');
+end;
+
+function IsAsciiDigit(AChar: Char): Boolean;
+begin
+  Result := (AChar >= '0') and (AChar <= '9');
+end;
+
+{ TWARtfParserState }
+
+constructor TWARtfParserState.Create(const ARtf: string);
+begin
+  inherited Create;
+  FRtf := ARtf;
+  FPos := 1;
+  FLength := Length(ARtf);
+  FDocument := TWARichDocument.Create;
+  FFontTable := TDictionary<Integer, string>.Create;
+  FGroupStack := TStack<TWARtfGroupSnapshot>.Create;
+  FCurrentFormat := TWARunFormat.Plain;
+  FCurrentAlignment := taLeftAlign;
+end;
+
+destructor TWARtfParserState.Destroy;
+begin
+  FGroupStack.Free;
+  FFontTable.Free;
+  inherited Destroy;
+end;
+
+function TWARtfParserState.AtEnd: Boolean;
+begin
+  Result := FPos > FLength;
+end;
+
+procedure TWARtfParserState.SkipWhitespace;
+begin
+  while (not AtEnd) and CharInSet(FRtf[FPos], [' ', #9, #10, #13]) do
+    Inc(FPos);
+end;
+
+function TWARtfParserState.PeekKeywordAfterWhitespace: string;
+var
+  LSavedPos: Integer;
+begin
+  // Called with FPos still pointing at the '{' being examined; peek at
+  // whatever immediately follows it (skipping whitespace) to decide
+  // whether this brace opens a \fonttbl or table group.
+  LSavedPos := FPos;
+  Inc(FPos);
+  SkipWhitespace;
+  if (not AtEnd) and (Copy(FRtf, FPos, 8) = '\fonttbl') then
+    Result := 'fonttbl'
+  else if (not AtEnd) and (Copy(FRtf, FPos, 6) = '\trowd') then
+    Result := 'trowd'
+  else
+    Result := '';
+  FPos := LSavedPos;
+end;
+
+procedure TWARtfParserState.EnsureParagraph;
+begin
+  if (FCurrentCell = nil) and (FCurrentParagraph = nil) then
+    FCurrentParagraph := FDocument.AddParagraph(FCurrentAlignment);
+end;
+
+procedure TWARtfParserState.ClosePendingParagraph;
+begin
+  FCurrentParagraph := nil;
+end;
+
+procedure TWARtfParserState.AppendChar(AChar: Char);
+begin
+  if FCurrentCell <> nil then
+  begin
+    if (FCurrentCell.Runs.Count > 0) and
+       FCurrentCell.Runs.Last.Format.EqualsFormat(FCurrentFormat) then
+      FCurrentCell.Runs.Last.Text := FCurrentCell.Runs.Last.Text + AChar
+    else
+      FCurrentCell.AddRun(AChar, FCurrentFormat);
+  end
+  else
+  begin
+    EnsureParagraph;
+    if (FCurrentParagraph.Runs.Count > 0) and
+       FCurrentParagraph.Runs.Last.Format.EqualsFormat(FCurrentFormat) then
+      FCurrentParagraph.Runs.Last.Text := FCurrentParagraph.Runs.Last.Text + AChar
+    else
+      FCurrentParagraph.AddRun(AChar, FCurrentFormat);
+  end;
+end;
+
+procedure TWARtfParserState.HandleControlWord(const AName: string; AHasParam: Boolean;
+  AParam: Integer);
+var
+  LFontName: string;
+begin
+  if AName = 'par' then
+  begin
+    if FCurrentCell = nil then
+      ClosePendingParagraph;
+  end
+  else if AName = 'pard' then
+    FCurrentAlignment := taLeftAlign
+  else if AName = 'ql' then
+    FCurrentAlignment := taLeftAlign
+  else if AName = 'qc' then
+    FCurrentAlignment := taCenterAlign
+  else if AName = 'qr' then
+    FCurrentAlignment := taRightAlign
+  else if AName = 'qj' then
+    FCurrentAlignment := taJustifyAlign
+  else if AName = 'b' then
+    FCurrentFormat.Bold := (not AHasParam) or (AParam <> 0)
+  else if AName = 'i' then
+    FCurrentFormat.Italic := (not AHasParam) or (AParam <> 0)
+  else if AName = 'ul' then
+    FCurrentFormat.Underline := (not AHasParam) or (AParam <> 0)
+  else if AName = 'ulnone' then
+    FCurrentFormat.Underline := False
+  else if AName = 'fs' then
+  begin
+    if AHasParam then
+      FCurrentFormat.FontSizeInPoints := AParam div 2;
+  end
+  else if AName = 'f' then
+  begin
+    if AHasParam and FFontTable.TryGetValue(AParam, LFontName) then
+      FCurrentFormat.FontName := LFontName;
+  end
+  else if AName = 'trowd' then
+  begin
+    if FCurrentTable <> nil then
+      FCurrentRow := FCurrentTable.AddRow;
+  end
+  else if AName = 'intbl' then
+  begin
+    if (FCurrentCell = nil) and (FCurrentRow <> nil) then
+      FCurrentCell := FCurrentRow.AddCell;
+  end
+  else if AName = 'cell' then
+    FCurrentCell := nil
+  else if AName = 'row' then
+    FCurrentRow := nil;
+  // Any other control word (\rtf, \ansi, \ansicpg, \deff, \uc, \viewkind,
+  // \cellx and similar) carries no meaning for the bounded model and is
+  // intentionally ignored.
+end;
+
+procedure TWARtfParserState.HandleBackslashEscape;
+var
+  LNameStart, LDigitsStart: Integer;
+  LName: string;
+  LHasParam, LNegative: Boolean;
+  LParam, LCodePoint: Integer;
+  LHex: string;
+begin
+  Inc(FPos); // consume backslash
+  if AtEnd then
+    Exit;
+
+  case FRtf[FPos] of
+    '\', '{', '}':
+      begin
+        AppendChar(FRtf[FPos]);
+        Inc(FPos);
+        Exit;
+      end;
+    '''':
+      begin
+        Inc(FPos);
+        LHex := Copy(FRtf, FPos, 2);
+        Inc(FPos, 2);
+        if TryStrToInt('$' + LHex, LParam) then
+          AppendChar(Chr(LParam));
+        Exit;
+      end;
+  end;
+
+  if not IsAsciiLetter(FRtf[FPos]) then
+  begin
+    // Unrecognized control symbol (e.g. \~, \-, \_): skip it.
+    Inc(FPos);
+    Exit;
+  end;
+
+  LNameStart := FPos;
+  while (not AtEnd) and IsAsciiLetter(FRtf[FPos]) do
+    Inc(FPos);
+  LName := Copy(FRtf, LNameStart, FPos - LNameStart);
+
+  LNegative := (not AtEnd) and (FRtf[FPos] = '-');
+  if LNegative then
+    Inc(FPos);
+  LDigitsStart := FPos;
+  while (not AtEnd) and IsAsciiDigit(FRtf[FPos]) do
+    Inc(FPos);
+  LHasParam := FPos > LDigitsStart;
+  LParam := 0;
+  if LHasParam then
+  begin
+    LParam := StrToInt(Copy(FRtf, LDigitsStart, FPos - LDigitsStart));
+    if LNegative then
+      LParam := -LParam;
+  end;
+
+  if LName = 'u' then
+  begin
+    // \uN is followed by exactly one fallback character (this writer
+    // always emits \uc1), which must be skipped rather than rendered.
+    LCodePoint := LParam;
+    if LCodePoint < 0 then
+      LCodePoint := LCodePoint + 65536;
+    if not AtEnd then
+      Inc(FPos);
+    AppendChar(Chr(LCodePoint));
+    Exit;
+  end;
+
+  if (not AtEnd) and (FRtf[FPos] = ' ') then
+    Inc(FPos);
+
+  HandleControlWord(LName, LHasParam, LParam);
+end;
+
+procedure TWARtfParserState.ParseFontEntry;
+var
+  LFontIndex: Integer;
+  LNameBuilder: string;
+  LDigitsStart: Integer;
+begin
+  LFontIndex := -1;
+  LNameBuilder := '';
+  while not AtEnd do
+  begin
+    case FRtf[FPos] of
+      '\':
+        begin
+          Inc(FPos);
+          if (not AtEnd) and (FRtf[FPos] = 'f') and (FPos + 1 <= FLength) and IsAsciiDigit(FRtf[FPos + 1]) then
+          begin
+            Inc(FPos);
+            LDigitsStart := FPos;
+            while (not AtEnd) and IsAsciiDigit(FRtf[FPos]) do
+              Inc(FPos);
+            LFontIndex := StrToInt(Copy(FRtf, LDigitsStart, FPos - LDigitsStart));
+          end
+          else
+          begin
+            // Font family control word (\fnil, \froman, \fcharset0, ...):
+            while (not AtEnd) and IsAsciiLetter(FRtf[FPos]) do
+              Inc(FPos);
+            while (not AtEnd) and IsAsciiDigit(FRtf[FPos]) do
+              Inc(FPos);
+          end;
+          if (not AtEnd) and (FRtf[FPos] = ' ') then
+            Inc(FPos);
+        end;
+      '}':
+        begin
+          Inc(FPos);
+          if LFontIndex >= 0 then
+            FFontTable.AddOrSetValue(LFontIndex, Trim(LNameBuilder));
+          Exit;
+        end;
+      ';':
+        Inc(FPos);
+    else
+      LNameBuilder := LNameBuilder + FRtf[FPos];
+      Inc(FPos);
+    end;
+  end;
+end;
+
+procedure TWARtfParserState.ParseFontTableGroup;
+begin
+  Inc(FPos, 8); // consume '\fonttbl'
+  while not AtEnd do
+  begin
+    case FRtf[FPos] of
+      '{':
+        begin
+          Inc(FPos);
+          ParseFontEntry;
+        end;
+      '}':
+        begin
+          Inc(FPos);
+          Exit;
+        end;
+    else
+      Inc(FPos);
+    end;
+  end;
+end;
+
+procedure TWARtfParserState.ParseTableGroup;
+begin
+  FCurrentTable := TWATableBlock.Create(1);
+  FDocument.Blocks.Add(FCurrentTable);
+  while not AtEnd do
+  begin
+    case FRtf[FPos] of
+      '\': HandleBackslashEscape;
+      '{': begin Inc(FPos); ParseGroup; end;
+      '}':
+        begin
+          Inc(FPos);
+          FCurrentRow := nil;
+          FCurrentCell := nil;
+          FCurrentTable := nil;
+          Exit;
+        end;
+      #10, #13: Inc(FPos);
+    else
+      AppendChar(FRtf[FPos]);
+      Inc(FPos);
+    end;
+  end;
+end;
+
+procedure TWARtfParserState.ParseGroup;
+var
+  LSnapshot: TWARtfGroupSnapshot;
+  LKeyword: string;
+begin
+  LSnapshot.Format := FCurrentFormat;
+  LSnapshot.Alignment := FCurrentAlignment;
+  FGroupStack.Push(LSnapshot);
+  try
+    while not AtEnd do
+    begin
+      case FRtf[FPos] of
+        '\': HandleBackslashEscape;
+        '{':
+          begin
+            LKeyword := PeekKeywordAfterWhitespace;
+            Inc(FPos); // consume '{'
+            SkipWhitespace; // skip any whitespace before the keyword
+            if LKeyword = 'fonttbl' then
+              ParseFontTableGroup
+            else if LKeyword = 'trowd' then
+              ParseTableGroup
+            else
+              ParseGroup;
+          end;
+        '}':
+          begin
+            Inc(FPos);
+            Exit;
+          end;
+        #10, #13: Inc(FPos);
+      else
+        AppendChar(FRtf[FPos]);
+        Inc(FPos);
+      end;
+    end;
+  finally
+    LSnapshot := FGroupStack.Pop;
+    FCurrentFormat := LSnapshot.Format;
+    FCurrentAlignment := LSnapshot.Alignment;
+  end;
+end;
+
+function TWARtfParserState.Parse: TWARichDocument;
+begin
+  SkipWhitespace;
+  if (not AtEnd) and (FRtf[FPos] = '{') then
+  begin
+    Inc(FPos);
+    ParseGroup;
+  end;
+  Result := FDocument;
+end;
+
+{ TWARtfDocumentParser }
+
+class function TWARtfDocumentParser.Parse(const ARtf: string): TWARichDocument;
+var
+  LState: TWARtfParserState;
+begin
+  LState := TWARtfParserState.Create(ARtf);
+  try
+    Result := LState.Parse;
+  finally
+    LState.Free;
+  end;
+end;
+
+end.
