@@ -24,6 +24,7 @@ type
   public
     constructor Create(ABrowser: TWebBrowser);
 
+    procedure BeginEditing;
     procedure SetBold(AEnabled: Boolean);
     procedure SetItalic(AEnabled: Boolean);
     procedure SetUnderline(AEnabled: Boolean);
@@ -75,6 +76,11 @@ end;
 function TWAWebBrowserEditorEngine.QueryCommandState(const ACommandName: string): Boolean;
 begin
   Result := GetHtmlDocument.queryCommandState(ACommandName);
+end;
+
+procedure TWAWebBrowserEditorEngine.BeginEditing;
+begin
+  GetHtmlDocument.designMode := 'On';
 end;
 
 procedure TWAWebBrowserEditorEngine.SetBold(AEnabled: Boolean);

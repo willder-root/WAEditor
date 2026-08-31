@@ -25,6 +25,7 @@ type
     FSetAlignmentCallCount: Integer;
     FInsertHtmlCallCount: Integer;
   public
+    procedure BeginEditing;
     procedure SetBold(AEnabled: Boolean);
     procedure SetItalic(AEnabled: Boolean);
     procedure SetUnderline(AEnabled: Boolean);
@@ -51,6 +52,11 @@ type
   end;
 
 implementation
+
+procedure TFakeHtmlEditorEngine.BeginEditing;
+begin
+  // No-op: the fake document is always considered editable.
+end;
 
 procedure TFakeHtmlEditorEngine.SetBold(AEnabled: Boolean);
 begin

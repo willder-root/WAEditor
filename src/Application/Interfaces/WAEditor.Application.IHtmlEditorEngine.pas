@@ -12,6 +12,11 @@ type
   /// replaced by a test double without touching use-case code.
   IWAHtmlEditorEngine = interface
     ['{B4C1B7B0-9C1F-4A6F-8A3E-7B2E2E5C2B01}']
+    /// Switches the hosted document into an editable state. Must be called
+    /// once the underlying surface has finished loading, before any other
+    /// method on this interface is used.
+    procedure BeginEditing;
+
     procedure SetBold(AEnabled: Boolean);
     procedure SetItalic(AEnabled: Boolean);
     procedure SetUnderline(AEnabled: Boolean);
