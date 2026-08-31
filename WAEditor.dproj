@@ -131,6 +131,8 @@
         <DCCReference Include="src\Application\Commands\WAEditor.Application.Commands.ToggleBoldCommand.pas"/>
         <DCCReference Include="src\Application\Commands\WAEditor.Application.Commands.ToggleItalicCommand.pas"/>
         <DCCReference Include="src\Application\Commands\WAEditor.Application.Commands.ToggleUnderlineCommand.pas"/>
+        <DCCReference Include="src\Application\Commands\WAEditor.Application.Commands.ToggleUnorderedListCommand.pas"/>
+        <DCCReference Include="src\Application\Commands\WAEditor.Application.Commands.ToggleOrderedListCommand.pas"/>
         <DCCReference Include="src\Application\Services\WAEditor.Application.DocumentService.pas"/>
         <DCCReference Include="src\Application\Services\WAEditor.Application.RtfDocumentService.pas"/>
         <DCCReference Include="src\Infrastructure\WebBrowser\WAEditor.Infrastructure.WebBrowserEditorEngine.pas"/>

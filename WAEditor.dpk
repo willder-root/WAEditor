@@ -51,6 +51,8 @@ contains
   WAEditor.Application.Commands.ToggleBoldCommand in 'src\Application\Commands\WAEditor.Application.Commands.ToggleBoldCommand.pas',
   WAEditor.Application.Commands.ToggleItalicCommand in 'src\Application\Commands\WAEditor.Application.Commands.ToggleItalicCommand.pas',
   WAEditor.Application.Commands.ToggleUnderlineCommand in 'src\Application\Commands\WAEditor.Application.Commands.ToggleUnderlineCommand.pas',
+  WAEditor.Application.Commands.ToggleUnorderedListCommand in 'src\Application\Commands\WAEditor.Application.Commands.ToggleUnorderedListCommand.pas',
+  WAEditor.Application.Commands.ToggleOrderedListCommand in 'src\Application\Commands\WAEditor.Application.Commands.ToggleOrderedListCommand.pas',
   WAEditor.Application.DocumentService in 'src\Application\Services\WAEditor.Application.DocumentService.pas',
   WAEditor.Application.RtfDocumentService in 'src\Application\Services\WAEditor.Application.RtfDocumentService.pas',
   WAEditor.Infrastructure.WebBrowserEditorEngine in 'src\Infrastructure\WebBrowser\WAEditor.Infrastructure.WebBrowserEditorEngine.pas',
