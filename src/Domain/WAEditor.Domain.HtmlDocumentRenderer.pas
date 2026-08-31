@@ -48,7 +48,14 @@ begin
 
   LStyle := '';
   if ARun.Format.FontName <> '' then
-    LStyle := LStyle + Format('font-family:%s;', [ARun.Format.FontName]);
+    // Always quote the font name: an unquoted multi-word CSS
+    // font-family (e.g. font-family:Courier New;) is invalid per spec,
+    // and MSHTML/Trident silently falls back to a default font instead
+    // of applying it. Single quotes are used because the surrounding
+    // style="..." attribute itself uses double quotes; EscapeHtml still
+    // protects against a font name that contains one of its own (can
+    // happen with RTF).
+    LStyle := LStyle + Format('font-family:''%s'';', [EscapeHtml(ARun.Format.FontName)]);
   if ARun.Format.FontSizeInPoints > 0 then
     LStyle := LStyle + Format('font-size:%dpt;', [ARun.Format.FontSizeInPoints]);
   if LStyle <> '' then
