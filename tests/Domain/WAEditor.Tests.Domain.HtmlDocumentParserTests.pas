@@ -56,6 +56,9 @@ type
 
     [Test]
     procedure Parse_ListItemWrappingContentInP_DoesNotCreateStrayParagraph;
+
+    [Test]
+    procedure Parse_FractionalFontSize_RoundsInsteadOfBeingDropped;
   end;
 
 implementation
@@ -296,6 +299,22 @@ begin
     Assert.AreEqual(2, LList.Items.Count);
     Assert.AreEqual('First item', LList.Items[0].Runs[0].Text);
     Assert.AreEqual('Second item', LList.Items[1].Runs[0].Text);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_FractionalFontSize_RoundsInsteadOfBeingDropped;
+var
+  LDocument: TWARichDocument;
+begin
+  // A live WYSIWYG surface can report a fractional point size (e.g.
+  // "10.5pt"). StrToIntDef alone silently drops these (falls back to
+  // the default, typically 0/unset) since "10.5" isn't a valid
+  // integer, discarding the configured font size entirely.
+  LDocument := TWAHtmlDocumentParser.Parse('<p><span style="font-size:10.5pt;">Text</span></p>');
+  try
+    Assert.AreEqual(10, TWAParagraphBlock(LDocument.Blocks[0]).Runs[0].Format.FontSizeInPoints);
   finally
     LDocument.Free;
   end;
