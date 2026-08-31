@@ -240,6 +240,10 @@ begin
       begin
         FCurrentList := nil; // a plain paragraph ends any list that was open
         FCurrentListItem := nil;
+        // A \par with no text in between (a blank RTF line) must still
+        // become an empty paragraph rather than vanish: otherwise the
+        // line break it represents is silently dropped from the model.
+        EnsureParagraph;
         ClosePendingParagraph;
       end;
     end;

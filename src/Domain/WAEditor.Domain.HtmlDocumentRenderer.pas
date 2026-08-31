@@ -59,7 +59,15 @@ var
 begin
   LBuilder := TStringBuilder.Create;
   try
-    LBuilder.AppendFormat('<p style="text-align:%s;">',
+    // margin:0 keeps consecutive paragraphs exactly one line-height apart,
+    // matching RTF's \par semantics (a plain line break, not a full
+    // block with its own spacing before/after). Without it, the host's
+    // default <p> margin gets added on top of every paragraph boundary
+    // and, in quirks-mode hosts (e.g. innerHTML on a script-created
+    // document, where adjacent margins don't collapse), stacks up on
+    // both neighbors instead of collapsing, visibly multiplying blank
+    // lines.
+    LBuilder.AppendFormat('<p style="margin:0;text-align:%s;">',
       [TWAAlignmentMapper.ToHtmlAttribute(AParagraph.Alignment)]);
     for LRun in AParagraph.Runs do
       LBuilder.Append(RenderRun(LRun));
