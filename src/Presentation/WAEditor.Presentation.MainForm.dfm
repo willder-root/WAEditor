@@ -150,8 +150,30 @@ object WAMainForm: TWAMainForm
       Flat = True
       OnClick = ButtonAlignJustifyClick
     end
+    object ButtonListUnordered: TSpeedButton
+      Left = 470
+      Top = 6
+      Width = 28
+      Height = 28
+      GroupIndex = 2
+      AllowAllUp = True
+      Caption = 'UL'
+      Flat = True
+      OnClick = ButtonListUnorderedClick
+    end
+    object ButtonListOrdered: TSpeedButton
+      Left = 500
+      Top = 6
+      Width = 28
+      Height = 28
+      GroupIndex = 2
+      AllowAllUp = True
+      Caption = '1.'
+      Flat = True
+      OnClick = ButtonListOrderedClick
+    end
     object ButtonInsertTable: TButton
-      Left = 480
+      Left = 540
       Top = 6
       Width = 110
       Height = 28

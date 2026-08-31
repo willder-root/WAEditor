@@ -35,6 +35,8 @@ type
     ButtonAlignCenter: TSpeedButton;
     ButtonAlignRight: TSpeedButton;
     ButtonAlignJustify: TSpeedButton;
+    ButtonListUnordered: TSpeedButton;
+    ButtonListOrdered: TSpeedButton;
     ButtonInsertTable: TButton;
     OpenDialog1: TOpenDialog;
     SaveDialog1: TSaveDialog;
@@ -57,6 +59,8 @@ type
     procedure ButtonAlignCenterClick(Sender: TObject);
     procedure ButtonAlignRightClick(Sender: TObject);
     procedure ButtonAlignJustifyClick(Sender: TObject);
+    procedure ButtonListUnorderedClick(Sender: TObject);
+    procedure ButtonListOrderedClick(Sender: TObject);
     procedure ButtonInsertTableClick(Sender: TObject);
   private
     // Created dynamically in FormCreate rather than streamed from the
@@ -92,6 +96,8 @@ uses
   WAEditor.Application.Commands.ToggleBoldCommand,
   WAEditor.Application.Commands.ToggleItalicCommand,
   WAEditor.Application.Commands.ToggleUnderlineCommand,
+  WAEditor.Application.Commands.ToggleUnorderedListCommand,
+  WAEditor.Application.Commands.ToggleOrderedListCommand,
   WAEditor.Application.ICommand,
   WAEditor.Presentation.InsertTableDialog;
 
@@ -300,6 +306,22 @@ end;
 procedure TWAMainForm.ButtonAlignJustifyClick(Sender: TObject);
 begin
   ApplyAlignment(taJustifyAlign);
+end;
+
+procedure TWAMainForm.ButtonListUnorderedClick(Sender: TObject);
+var
+  LCommand: IWAEditorCommand;
+begin
+  LCommand := TWAToggleUnorderedListCommand.Create(FEngine);
+  LCommand.Execute;
+end;
+
+procedure TWAMainForm.ButtonListOrderedClick(Sender: TObject);
+var
+  LCommand: IWAEditorCommand;
+begin
+  LCommand := TWAToggleOrderedListCommand.Create(FEngine);
+  LCommand.Execute;
 end;
 
 procedure TWAMainForm.ButtonInsertTableClick(Sender: TObject);
