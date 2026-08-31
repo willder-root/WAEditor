@@ -38,6 +38,15 @@ type
 
     [Test]
     procedure Parse_UnicodeEscape_DecodesCodepointAndSkipsFallbackChar;
+
+    [Test]
+    procedure Parse_UnorderedList_StripsBulletMarkerAndProducesItems;
+
+    [Test]
+    procedure Parse_OrderedList_StripsNumberMarkerAndDetectsOrderedKind;
+
+    [Test]
+    procedure Parse_ListFollowedByPlainParagraph_ClosesList;
   end;
 
 implementation
@@ -166,6 +175,67 @@ begin
   LDocument := TWARtfDocumentParser.Parse('{\rtf1\ansi\deff0 \pard\ql caf\u233?\par}');
   try
     Assert.AreEqual('caf' + Chr(233), TWAParagraphBlock(LDocument.Blocks[0]).Runs[0].Text);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_UnorderedList_StripsBulletMarkerAndProducesItems;
+var
+  LDocument: TWARichDocument;
+  LList: TWAListBlock;
+begin
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 ' +
+    '\pard\fi-360\li720\ql \bullet\tab {First}\par' +
+    '\pard\fi-360\li720\ql \bullet\tab {Second}\par' +
+    '}');
+  try
+    Assert.AreEqual(1, LDocument.Blocks.Count);
+    LList := TWAListBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(Ord(lkUnordered), Ord(LList.Kind));
+    Assert.AreEqual(2, LList.Items.Count);
+    Assert.AreEqual('First', LList.Items[0].Runs[0].Text);
+    Assert.AreEqual('Second', LList.Items[1].Runs[0].Text);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_OrderedList_StripsNumberMarkerAndDetectsOrderedKind;
+var
+  LDocument: TWARichDocument;
+  LList: TWAListBlock;
+begin
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 ' +
+    '\pard\fi-360\li720\ql 1.\tab {First}\par' +
+    '\pard\fi-360\li720\ql 2.\tab {Second}\par' +
+    '}');
+  try
+    LList := TWAListBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(Ord(lkOrdered), Ord(LList.Kind));
+    Assert.AreEqual('First', LList.Items[0].Runs[0].Text);
+    Assert.AreEqual('Second', LList.Items[1].Runs[0].Text);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_ListFollowedByPlainParagraph_ClosesList;
+var
+  LDocument: TWARichDocument;
+begin
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 ' +
+    '\pard\fi-360\li720\ql \bullet\tab {Item}\par' +
+    '\pard\ql After\par' +
+    '}');
+  try
+    Assert.AreEqual(2, LDocument.Blocks.Count);
+    Assert.IsTrue(LDocument.Blocks[0] is TWAListBlock);
+    Assert.IsTrue(LDocument.Blocks[1] is TWAParagraphBlock);
+    Assert.AreEqual('After', TWAParagraphBlock(LDocument.Blocks[1]).Runs[0].Text);
   finally
     LDocument.Free;
   end;

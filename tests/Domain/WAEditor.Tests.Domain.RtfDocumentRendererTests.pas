@@ -32,6 +32,12 @@ type
 
     [Test]
     procedure Render_NonAsciiCharacter_EmitsUnicodeEscape;
+
+    [Test]
+    procedure Render_UnorderedList_EmitsBulletMarkerPerItem;
+
+    [Test]
+    procedure Render_OrderedList_EmitsIncrementingNumberMarkerPerItem;
   end;
 
 implementation
@@ -158,6 +164,48 @@ begin
     LRtf := TWARtfDocumentRenderer.Render(LDocument);
 
     Assert.Contains(LRtf, '\u233?');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentRendererTests.Render_UnorderedList_EmitsBulletMarkerPerItem;
+var
+  LDocument: TWARichDocument;
+  LList: TWAListBlock;
+  LRtf: string;
+begin
+  LDocument := TWARichDocument.Create;
+  try
+    LList := LDocument.AddList(lkUnordered);
+    LList.AddItem.AddRun('First', TWARunFormat.Plain);
+    LList.AddItem.AddRun('Second', TWARunFormat.Plain);
+    LRtf := TWARtfDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LRtf, '\fi-360\li720');
+    Assert.Contains(LRtf, '\bullet\tab');
+    Assert.Contains(LRtf, 'First');
+    Assert.Contains(LRtf, 'Second');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentRendererTests.Render_OrderedList_EmitsIncrementingNumberMarkerPerItem;
+var
+  LDocument: TWARichDocument;
+  LList: TWAListBlock;
+  LRtf: string;
+begin
+  LDocument := TWARichDocument.Create;
+  try
+    LList := LDocument.AddList(lkOrdered);
+    LList.AddItem.AddRun('First', TWARunFormat.Plain);
+    LList.AddItem.AddRun('Second', TWARunFormat.Plain);
+    LRtf := TWARtfDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LRtf, '1.\tab');
+    Assert.Contains(LRtf, '2.\tab');
   finally
     LDocument.Free;
   end;

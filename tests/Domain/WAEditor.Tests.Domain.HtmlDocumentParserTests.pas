@@ -38,6 +38,12 @@ type
 
     [Test]
     procedure Parse_HtmlEntities_AreDecoded;
+
+    [Test]
+    procedure Parse_UnorderedList_ProducesListBlockWithItems;
+
+    [Test]
+    procedure Parse_OrderedList_ProducesOrderedListBlock;
   end;
 
 implementation
@@ -165,6 +171,41 @@ begin
   LDocument := TWAHtmlDocumentParser.Parse('<p>Tom &amp; Jerry &lt;3&gt;</p>');
   try
     Assert.AreEqual('Tom & Jerry <3>', TWAParagraphBlock(LDocument.Blocks[0]).Runs[0].Text);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_UnorderedList_ProducesListBlockWithItems;
+var
+  LDocument: TWARichDocument;
+  LList: TWAListBlock;
+begin
+  LDocument := TWAHtmlDocumentParser.Parse('<ul><li>First</li><li>Second</li></ul>');
+  try
+    Assert.AreEqual(1, LDocument.Blocks.Count);
+    Assert.IsTrue(LDocument.Blocks[0] is TWAListBlock);
+    LList := TWAListBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(Ord(lkUnordered), Ord(LList.Kind));
+    Assert.AreEqual(2, LList.Items.Count);
+    Assert.AreEqual('First', LList.Items[0].Runs[0].Text);
+    Assert.AreEqual('Second', LList.Items[1].Runs[0].Text);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_OrderedList_ProducesOrderedListBlock;
+var
+  LDocument: TWARichDocument;
+  LList: TWAListBlock;
+begin
+  LDocument := TWAHtmlDocumentParser.Parse('<ol><li><b>Step one</b></li></ol>');
+  try
+    LList := TWAListBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(Ord(lkOrdered), Ord(LList.Kind));
+    Assert.AreEqual('Step one', LList.Items[0].Runs[0].Text);
+    Assert.IsTrue(LList.Items[0].Runs[0].Format.Bold);
   finally
     LDocument.Free;
   end;

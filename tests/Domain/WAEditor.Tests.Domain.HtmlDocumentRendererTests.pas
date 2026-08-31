@@ -26,9 +26,18 @@ type
 
     [Test]
     procedure Render_EscapesHtmlSpecialCharactersInText;
+
+    [Test]
+    procedure Render_UnorderedList_EmitsUlWithLiItems;
+
+    [Test]
+    procedure Render_OrderedList_EmitsOlWithLiItems;
   end;
 
 implementation
+
+uses
+  System.SysUtils;
 
 procedure TWAHtmlDocumentRendererTests.Render_ParagraphWithBoldRun_WrapsTextInBoldTag;
 var
@@ -112,6 +121,48 @@ begin
     LHtml := TWAHtmlDocumentRenderer.Render(LDocument);
 
     Assert.Contains(LHtml, '&lt;script&gt;&amp;&quot;quote&quot;&lt;/script&gt;');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentRendererTests.Render_UnorderedList_EmitsUlWithLiItems;
+var
+  LDocument: TWARichDocument;
+  LList: TWAListBlock;
+  LHtml: string;
+begin
+  LDocument := TWARichDocument.Create;
+  try
+    LList := LDocument.AddList(lkUnordered);
+    LList.AddItem.AddRun('First', TWARunFormat.Plain);
+    LList.AddItem.AddRun('Second', TWARunFormat.Plain);
+    LHtml := TWAHtmlDocumentRenderer.Render(LDocument);
+
+    Assert.IsTrue(LHtml.StartsWith('<ul>'));
+    Assert.IsTrue(LHtml.EndsWith('</ul>'));
+    Assert.Contains(LHtml, '<li>First</li>');
+    Assert.Contains(LHtml, '<li>Second</li>');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentRendererTests.Render_OrderedList_EmitsOlWithLiItems;
+var
+  LDocument: TWARichDocument;
+  LList: TWAListBlock;
+  LHtml: string;
+begin
+  LDocument := TWARichDocument.Create;
+  try
+    LList := LDocument.AddList(lkOrdered);
+    LList.AddItem.AddRun('Step one', TWARunFormat.Plain);
+    LHtml := TWAHtmlDocumentRenderer.Render(LDocument);
+
+    Assert.IsTrue(LHtml.StartsWith('<ol>'));
+    Assert.IsTrue(LHtml.EndsWith('</ol>'));
+    Assert.Contains(LHtml, '<li>Step one</li>');
   finally
     LDocument.Free;
   end;

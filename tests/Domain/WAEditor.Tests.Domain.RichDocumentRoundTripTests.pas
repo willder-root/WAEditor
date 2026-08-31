@@ -29,6 +29,15 @@ type
 
     [Test]
     procedure HtmlToRtfToHtml_PreservesFormatting;
+
+    [Test]
+    procedure HtmlRoundTrip_PreservesOrderedList;
+
+    [Test]
+    procedure RtfRoundTrip_PreservesUnorderedListWithFormattedItem;
+
+    [Test]
+    procedure HtmlToRtfToHtml_PreservesOrderedList;
   end;
 
 implementation
@@ -195,6 +204,100 @@ begin
       Assert.AreEqual('Body text', LRun.Text);
       Assert.IsTrue(LRun.Format.Italic);
       Assert.IsTrue(LRun.Format.Underline);
+    finally
+      LFromRtf.Free;
+    end;
+  finally
+    LOriginal.Free;
+  end;
+end;
+
+procedure TWARichDocumentRoundTripTests.HtmlRoundTrip_PreservesOrderedList;
+var
+  LOriginal, LParsed: TWARichDocument;
+  LList: TWAListBlock;
+  LHtml: string;
+  LParsedList: TWAListBlock;
+begin
+  LOriginal := TWARichDocument.Create;
+  try
+    LList := LOriginal.AddList(lkOrdered);
+    LList.AddItem.AddRun('First', TWARunFormat.Plain);
+    LList.AddItem.AddRun('Second', TWARunFormat.Create(True, False, False, '', 0));
+
+    LHtml := TWAHtmlDocumentRenderer.Render(LOriginal);
+    LParsed := TWAHtmlDocumentParser.Parse(LHtml);
+    try
+      Assert.AreEqual(1, LParsed.Blocks.Count);
+      LParsedList := TWAListBlock(LParsed.Blocks[0]);
+      Assert.AreEqual(Ord(lkOrdered), Ord(LParsedList.Kind));
+      Assert.AreEqual('First', LParsedList.Items[0].Runs[0].Text);
+      Assert.AreEqual('Second', LParsedList.Items[1].Runs[0].Text);
+      Assert.IsTrue(LParsedList.Items[1].Runs[0].Format.Bold);
+    finally
+      LParsed.Free;
+    end;
+  finally
+    LOriginal.Free;
+  end;
+end;
+
+procedure TWARichDocumentRoundTripTests.RtfRoundTrip_PreservesUnorderedListWithFormattedItem;
+var
+  LOriginal, LParsed: TWARichDocument;
+  LList: TWAListBlock;
+  LRtf: string;
+  LParsedList: TWAListBlock;
+begin
+  LOriginal := TWARichDocument.Create;
+  try
+    LList := LOriginal.AddList(lkUnordered);
+    LList.AddItem.AddRun('Milk', TWARunFormat.Plain);
+    LList.AddItem.AddRun('Eggs', TWARunFormat.Create(False, True, False, '', 0));
+
+    LRtf := TWARtfDocumentRenderer.Render(LOriginal);
+    LParsed := TWARtfDocumentParser.Parse(LRtf);
+    try
+      Assert.AreEqual(1, LParsed.Blocks.Count);
+      LParsedList := TWAListBlock(LParsed.Blocks[0]);
+      Assert.AreEqual(Ord(lkUnordered), Ord(LParsedList.Kind));
+      Assert.AreEqual('Milk', LParsedList.Items[0].Runs[0].Text);
+      Assert.AreEqual('Eggs', LParsedList.Items[1].Runs[0].Text);
+      Assert.IsTrue(LParsedList.Items[1].Runs[0].Format.Italic);
+    finally
+      LParsed.Free;
+    end;
+  finally
+    LOriginal.Free;
+  end;
+end;
+
+procedure TWARichDocumentRoundTripTests.HtmlToRtfToHtml_PreservesOrderedList;
+var
+  LOriginal, LFromRtf: TWARichDocument;
+  LHtml, LRtf, LHtmlAgain: string;
+  LList: TWAListBlock;
+begin
+  LOriginal := TWARichDocument.Create;
+  try
+    LList := LOriginal.AddList(lkOrdered);
+    LList.AddItem.AddRun('Step one', TWARunFormat.Plain);
+    LList.AddItem.AddRun('Step two', TWARunFormat.Plain);
+
+    LHtml := TWAHtmlDocumentRenderer.Render(LOriginal);
+    LFromRtf := TWAHtmlDocumentParser.Parse(LHtml);
+    try
+      LRtf := TWARtfDocumentRenderer.Render(LFromRtf);
+    finally
+      LFromRtf.Free;
+    end;
+
+    LFromRtf := TWARtfDocumentParser.Parse(LRtf);
+    try
+      LHtmlAgain := TWAHtmlDocumentRenderer.Render(LFromRtf);
+      Assert.Contains(LHtmlAgain, '<ol>');
+      Assert.Contains(LHtmlAgain, '<li>Step one</li>');
+      Assert.Contains(LHtmlAgain, '<li>Step two</li>');
     finally
       LFromRtf.Free;
     end;
