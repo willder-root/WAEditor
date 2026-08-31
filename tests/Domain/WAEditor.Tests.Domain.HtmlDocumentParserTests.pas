@@ -59,6 +59,20 @@ type
 
     [Test]
     procedure Parse_FractionalFontSize_RoundsInsteadOfBeingDropped;
+
+    [Test]
+    [TestCase('Points', 'font-size:10pt;,10')]
+    [TestCase('Pixels', 'font-size:16px;,12')]
+    [TestCase('Em', 'font-size:1.5em;,18')]
+    [TestCase('Percent', 'font-size:150%;,18')]
+    [TestCase('Inches', 'font-size:0.5in;,36')]
+    [TestCase('Picas', 'font-size:1pc;,12')]
+    [TestCase('Rem', 'font-size:2rem;,24')]
+    procedure Parse_FontSizeInVariousCssUnits_ConvertsToExpectedPoints(
+      const AStyle: string; AExpectedPoints: Integer);
+
+    [Test]
+    procedure Parse_FontSizeWithUnrecognizedKeyword_LeavesSizeUnchanged;
   end;
 
 implementation
@@ -315,6 +329,35 @@ begin
   LDocument := TWAHtmlDocumentParser.Parse('<p><span style="font-size:10.5pt;">Text</span></p>');
   try
     Assert.AreEqual(10, TWAParagraphBlock(LDocument.Blocks[0]).Runs[0].Format.FontSizeInPoints);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_FontSizeInVariousCssUnits_ConvertsToExpectedPoints(
+  const AStyle: string; AExpectedPoints: Integer);
+var
+  LDocument: TWARichDocument;
+begin
+  // A live WYSIWYG surface can report font-size in any CSS length unit
+  // depending on how it computed the style, not just plain "pt". Em/
+  // percent are resolved against the common 16px/12pt browser default
+  // since there is no inherited size in this bare <span>.
+  LDocument := TWAHtmlDocumentParser.Parse('<p><span style="' + AStyle + '">Text</span></p>');
+  try
+    Assert.AreEqual(AExpectedPoints, TWAParagraphBlock(LDocument.Blocks[0]).Runs[0].Format.FontSizeInPoints);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_FontSizeWithUnrecognizedKeyword_LeavesSizeUnchanged;
+var
+  LDocument: TWARichDocument;
+begin
+  LDocument := TWAHtmlDocumentParser.Parse('<p><span style="font-size:medium;">Text</span></p>');
+  try
+    Assert.AreEqual(0, TWAParagraphBlock(LDocument.Blocks[0]).Runs[0].Format.FontSizeInPoints);
   finally
     LDocument.Free;
   end;
