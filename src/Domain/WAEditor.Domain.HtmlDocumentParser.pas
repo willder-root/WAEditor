@@ -39,6 +39,8 @@ type
     FCurrentTable: TWATableBlock;
     FCurrentRow: TWATableRow;
     FCurrentCell: TWATableCell;
+    FCurrentList: TWAListBlock;
+    FCurrentListItem: TWAListItem;
 
     function CurrentFormat: TWARunFormat;
     procedure EnsureParagraph;
@@ -186,7 +188,7 @@ end;
 
 procedure TWAHtmlParserState.EnsureParagraph;
 begin
-  if (FCurrentCell = nil) and (FCurrentParagraph = nil) then
+  if (FCurrentCell = nil) and (FCurrentListItem = nil) and (FCurrentParagraph = nil) then
     FCurrentParagraph := FDocument.AddParagraph(taLeftAlign);
 end;
 
@@ -199,6 +201,8 @@ begin
     Exit;
   if FCurrentCell <> nil then
     FCurrentCell.AddRun(LDecoded, CurrentFormat)
+  else if FCurrentListItem <> nil then
+    FCurrentListItem.AddRun(LDecoded, CurrentFormat)
   else
   begin
     EnsureParagraph;
@@ -273,6 +277,19 @@ begin
   begin
     if FCurrentRow <> nil then
       FCurrentCell := FCurrentRow.AddCell;
+  end
+  else if (ATagName = 'ul') or (ATagName = 'ol') then
+  begin
+    if ATagName = 'ol' then
+      FCurrentList := FDocument.AddList(lkOrdered)
+    else
+      FCurrentList := FDocument.AddList(lkUnordered);
+    FCurrentParagraph := nil;
+  end
+  else if ATagName = 'li' then
+  begin
+    if FCurrentList <> nil then
+      FCurrentListItem := FCurrentList.AddItem;
   end;
 end;
 
@@ -291,6 +308,13 @@ begin
   else if ATagName = 'table' then
   begin
     FCurrentTable := nil;
+    FCurrentParagraph := nil;
+  end
+  else if ATagName = 'li' then
+    FCurrentListItem := nil
+  else if (ATagName = 'ul') or (ATagName = 'ol') then
+  begin
+    FCurrentList := nil;
     FCurrentParagraph := nil;
   end;
 end;
