@@ -171,6 +171,30 @@ begin
   end;
 end;
 
+function HasBooleanAttribute(const AAttributes, AAttrName: string): Boolean;
+// HTML boolean attributes (checked, disabled, ...) can appear bare,
+// with no "=value" at all, so ExtractAttribute's name= search does not
+// find them. Looks for the name as a standalone token (not, e.g., the
+// "checked" inside "unchecked") anywhere in the attribute text.
+var
+  LLower, LNameLower: string;
+  LPos, LBefore, LAfter: Integer;
+begin
+  Result := False;
+  LLower := LowerCase(AAttributes);
+  LNameLower := LowerCase(AAttrName);
+  LPos := Pos(LNameLower, LLower);
+  while LPos > 0 do
+  begin
+    LBefore := LPos - 1;
+    LAfter := LPos + Length(LNameLower);
+    if ((LBefore < 1) or not CharInSet(LLower[LBefore], ['a'..'z'])) and
+       ((LAfter > Length(LLower)) or not CharInSet(LLower[LAfter], ['a'..'z'])) then
+      Exit(True);
+    LPos := PosEx(LNameLower, LLower, LPos + 1);
+  end;
+end;
+
 function ParseStyleFormat(const AStyle: string; ABase: TWARunFormat): TWARunFormat;
 var
   LParts: TArray<string>;
@@ -357,6 +381,7 @@ var
   LFace: string;
   LSize: Integer;
   LBorder: Integer;
+  LInputType: string;
 begin
   if (ATagName = 'b') or (ATagName = 'strong') then
   begin
@@ -409,6 +434,13 @@ begin
   end
   else if ATagName = 'br' then
     AppendLineBreak
+  else if ATagName = 'input' then
+  begin
+    LInputType := LowerCase(Trim(ExtractAttribute(AAttributes, 'type')));
+    if (LInputType = 'checkbox') or (LInputType = 'radio') then
+      AppendRun(TWARun.CreateCheckbox(
+        HasBooleanAttribute(AAttributes, 'checked'), LInputType = 'radio'));
+  end
   else if ATagName = 'table' then
   begin
     if not TryStrToInt(ExtractAttribute(AAttributes, 'border'), LBorder) then
