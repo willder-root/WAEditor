@@ -103,6 +103,37 @@ begin
   end;
 end;
 
+function RenderList(AList: TWAListBlock): string;
+var
+  LTag: string;
+  LBuilder: TStringBuilder;
+  LItem: TWAListItem;
+  LRun: TWARun;
+begin
+  if AList.Kind = lkOrdered then
+    LTag := 'ol'
+  else
+    LTag := 'ul';
+
+  LBuilder := TStringBuilder.Create;
+  try
+    LBuilder.AppendFormat('<%s>', [LTag]);
+    for LItem in AList.Items do
+    begin
+      LBuilder.Append('<li>');
+      for LRun in LItem.Runs do
+        LBuilder.Append(RenderRun(LRun));
+      if LItem.Runs.Count = 0 then
+        LBuilder.Append('&nbsp;');
+      LBuilder.Append('</li>');
+    end;
+    LBuilder.AppendFormat('</%s>', [LTag]);
+    Result := LBuilder.ToString;
+  finally
+    LBuilder.Free;
+  end;
+end;
+
 class function TWAHtmlDocumentRenderer.Render(ADocument: TWARichDocument): string;
 var
   LBuilder: TStringBuilder;
@@ -115,7 +146,9 @@ begin
       if LBlock is TWAParagraphBlock then
         LBuilder.Append(RenderParagraph(TWAParagraphBlock(LBlock)))
       else if LBlock is TWATableBlock then
-        LBuilder.Append(RenderTable(TWATableBlock(LBlock)));
+        LBuilder.Append(RenderTable(TWATableBlock(LBlock)))
+      else if LBlock is TWAListBlock then
+        LBuilder.Append(RenderList(TWAListBlock(LBlock)));
     end;
     Result := LBuilder.ToString;
   finally
