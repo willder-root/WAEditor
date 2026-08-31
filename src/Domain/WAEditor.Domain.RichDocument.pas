@@ -26,7 +26,13 @@ type
   public
     Text: string;
     Format: TWARunFormat;
+    // A soft line break within the paragraph (HTML's <br>, RTF's \line):
+    // distinct from a paragraph boundary, which is what a plain
+    // TWAParagraphBlock/\par already represents. When True, Text is
+    // always empty and Format is not meaningful.
+    IsLineBreak: Boolean;
     constructor Create(const AText: string; const AFormat: TWARunFormat);
+    class function CreateLineBreak: TWARun; static;
   end;
 
   TWABlock = class abstract
@@ -35,6 +41,12 @@ type
   TWAParagraphBlock = class(TWABlock)
   public
     Alignment: TWATextAlignment;
+    // A simple box border around the whole paragraph (RTF's
+    // \brdrl\brdrr\brdrt\brdrb / CSS's border, on all four sides). This
+    // is a deliberately bounded model: it does not track per-side
+    // presence, style, width or color, only whether the paragraph is
+    // boxed at all.
+    HasBorder: Boolean;
     Runs: TObjectList<TWARun>;
     constructor Create(AAlignment: TWATextAlignment = taLeftAlign);
     destructor Destroy; override;
@@ -128,6 +140,12 @@ begin
   inherited Create;
   Text := AText;
   Format := AFormat;
+end;
+
+class function TWARun.CreateLineBreak: TWARun;
+begin
+  Result := TWARun.Create('', TWARunFormat.Plain);
+  Result.IsLineBreak := True;
 end;
 
 { TWAParagraphBlock }
