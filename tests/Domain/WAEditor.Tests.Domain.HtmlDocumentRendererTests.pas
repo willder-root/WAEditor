@@ -41,6 +41,12 @@ type
 
     [Test]
     procedure Render_MultiWordFontName_IsQuotedInStyle;
+
+    [Test]
+    procedure Render_CheckedCheckboxRun_EmitsCheckedInputCheckbox;
+
+    [Test]
+    procedure Render_UncheckedRadioRun_EmitsUncheckedInputRadio;
   end;
 
 implementation
@@ -240,6 +246,39 @@ begin
     // Single quotes, never HTML-escaped double quotes: the value must
     // not break out of the surrounding style="..." attribute.
     Assert.IsFalse(LHtml.Contains('&quot;'));
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentRendererTests.Render_CheckedCheckboxRun_EmitsCheckedInputCheckbox;
+var
+  LDocument: TWARichDocument;
+  LHtml: string;
+begin
+  LDocument := TWARichDocument.Create;
+  try
+    LDocument.AddParagraph.Runs.Add(TWARun.CreateCheckbox(True, False));
+    LHtml := TWAHtmlDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LHtml, '<input type="checkbox" checked>');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentRendererTests.Render_UncheckedRadioRun_EmitsUncheckedInputRadio;
+var
+  LDocument: TWARichDocument;
+  LHtml: string;
+begin
+  LDocument := TWARichDocument.Create;
+  try
+    LDocument.AddParagraph.Runs.Add(TWARun.CreateCheckbox(False, True));
+    LHtml := TWAHtmlDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LHtml, '<input type="radio">');
+    Assert.IsFalse(LHtml.Contains('checked'));
   finally
     LDocument.Free;
   end;

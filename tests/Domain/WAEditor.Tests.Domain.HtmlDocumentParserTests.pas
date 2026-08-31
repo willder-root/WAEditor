@@ -76,6 +76,12 @@ type
 
     [Test]
     procedure Parse_HtmlEscapedQuotedFontFamily_DecodesBeforeSplittingOnSemicolons;
+
+    [Test]
+    procedure Parse_CheckedInputCheckbox_ProducesCheckedCheckboxRun;
+
+    [Test]
+    procedure Parse_UncheckedInputRadio_ProducesUncheckedRadioRun;
   end;
 
 implementation
@@ -384,6 +390,38 @@ begin
     LRun := TWAParagraphBlock(LDocument.Blocks[0]).Runs[0];
     Assert.AreEqual('Courier New', LRun.Format.FontName);
     Assert.AreEqual(12, LRun.Format.FontSizeInPoints);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_CheckedInputCheckbox_ProducesCheckedCheckboxRun;
+var
+  LDocument: TWARichDocument;
+  LRun: TWARun;
+begin
+  LDocument := TWAHtmlDocumentParser.Parse('<p><input type="checkbox" checked> Text</p>');
+  try
+    LRun := TWAParagraphBlock(LDocument.Blocks[0]).Runs[0];
+    Assert.IsTrue(LRun.IsCheckbox);
+    Assert.IsTrue(LRun.IsChecked);
+    Assert.IsFalse(LRun.IsRadio);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_UncheckedInputRadio_ProducesUncheckedRadioRun;
+var
+  LDocument: TWARichDocument;
+  LRun: TWARun;
+begin
+  LDocument := TWAHtmlDocumentParser.Parse('<p><input type="radio"> Text</p>');
+  try
+    LRun := TWAParagraphBlock(LDocument.Blocks[0]).Runs[0];
+    Assert.IsTrue(LRun.IsCheckbox);
+    Assert.IsFalse(LRun.IsChecked);
+    Assert.IsTrue(LRun.IsRadio);
   finally
     LDocument.Free;
   end;
