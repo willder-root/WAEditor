@@ -44,6 +44,9 @@ type
 
     [Test]
     procedure Render_ParagraphWithBorder_EmitsBorderControlWords;
+
+    [Test]
+    procedure Render_FontNameWithRtfSpecialCharacters_IsEscapedInFontTable;
   end;
 
 implementation
@@ -275,6 +278,28 @@ begin
     Assert.Contains(LRtf, '\brdrr');
     Assert.Contains(LRtf, '\brdrt');
     Assert.Contains(LRtf, '\brdrb');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentRendererTests.Render_FontNameWithRtfSpecialCharacters_IsEscapedInFontTable;
+var
+  LDocument: TWARichDocument;
+  LRtf: string;
+begin
+  // An unescaped \, { or } inside a \fonttbl entry corrupts the brace
+  // structure of the whole document: every reader parsing the rest of
+  // the RTF desynchronizes right from the header, which can drop
+  // formatting throughout the document even in paragraphs unrelated to
+  // that font (reported against a third-party RTF reader).
+  LDocument := TWARichDocument.Create;
+  try
+    LDocument.AddParagraph.AddRun('Text',
+      TWARunFormat.Create(False, False, False, 'Weird{Font}Name\Here', 0));
+    LRtf := TWARtfDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LRtf, 'Weird\{Font\}Name\\Here;');
   finally
     LDocument.Free;
   end;
