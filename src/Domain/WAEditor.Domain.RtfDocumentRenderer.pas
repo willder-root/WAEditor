@@ -81,6 +81,7 @@ var
   LBlock: TWABlock;
   LRow: TWATableRow;
   LCell: TWATableCell;
+  LItem: TWAListItem;
 begin
   for LBlock in ADocument.Blocks do
   begin
@@ -89,7 +90,10 @@ begin
     else if LBlock is TWATableBlock then
       for LRow in TWATableBlock(LBlock).Rows do
         for LCell in LRow.Cells do
-          CollectRuns(LCell.Runs);
+          CollectRuns(LCell.Runs)
+    else if LBlock is TWAListBlock then
+      for LItem in TWAListBlock(LBlock).Items do
+        CollectRuns(LItem.Runs);
   end;
 end;
 
@@ -227,6 +231,36 @@ begin
   end;
 end;
 
+function RenderList(AList: TWAListBlock; AFontTable: TWAFontTable): string;
+var
+  LBuilder: TStringBuilder;
+  LRun: TWARun;
+  I: Integer;
+begin
+  LBuilder := TStringBuilder.Create;
+  try
+    for I := 0 to AList.Items.Count - 1 do
+    begin
+      // A hand-rolled "poor man's list": each item is a hanging-indent
+      // paragraph (\fi-360\li720) whose marker is a literal \bullet or
+      // "N." followed by \tab. The parser recognizes this exact
+      // \pard\fi-360 signature and strips the marker back out, rather
+      // than relying on the full RTF list-table machinery.
+      LBuilder.Append('\pard\fi-360\li720\ql ');
+      if AList.Kind = lkOrdered then
+        LBuilder.AppendFormat('%d.\tab ', [I + 1])
+      else
+        LBuilder.Append('\bullet\tab ');
+      for LRun in AList.Items[I].Runs do
+        LBuilder.Append(RenderRunGroup(LRun, AFontTable));
+      LBuilder.Append('\par').Append(sLineBreak);
+    end;
+    Result := LBuilder.ToString;
+  finally
+    LBuilder.Free;
+  end;
+end;
+
 class function TWARtfDocumentRenderer.Render(ADocument: TWARichDocument): string;
 var
   LFontTable: TWAFontTable;
@@ -247,7 +281,9 @@ begin
       if LBlock is TWAParagraphBlock then
         LBuilder.Append(RenderParagraph(TWAParagraphBlock(LBlock), LFontTable))
       else if LBlock is TWATableBlock then
-        LBuilder.Append(RenderTable(TWATableBlock(LBlock), LFontTable));
+        LBuilder.Append(RenderTable(TWATableBlock(LBlock), LFontTable))
+      else if LBlock is TWAListBlock then
+        LBuilder.Append(RenderList(TWAListBlock(LBlock), LFontTable));
     end;
 
     LBuilder.Append('}');
