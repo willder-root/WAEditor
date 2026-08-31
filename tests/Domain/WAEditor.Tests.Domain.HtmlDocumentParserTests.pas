@@ -47,6 +47,12 @@ type
 
     [Test]
     procedure Parse_BrTag_InsertsLineBreakRunWithoutSplittingParagraph;
+
+    [Test]
+    procedure Parse_SingleQuotedMultiWordFontFamily_StripsQuotesAndKeepsSpace;
+
+    [Test]
+    procedure Parse_EmptyFontFamilyValue_DoesNotRaise;
   end;
 
 implementation
@@ -230,6 +236,39 @@ begin
     Assert.AreEqual('Line one', LParagraph.Runs[0].Text);
     Assert.IsTrue(LParagraph.Runs[1].IsLineBreak);
     Assert.AreEqual('Line two', LParagraph.Runs[2].Text);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_SingleQuotedMultiWordFontFamily_StripsQuotesAndKeepsSpace;
+var
+  LDocument: TWARichDocument;
+  LRun: TWARun;
+begin
+  // Matches this renderer's own output: font-family is single-quoted
+  // because the surrounding style="..." attribute uses double quotes.
+  LDocument := TWAHtmlDocumentParser.Parse(
+    '<p><span style="font-family:''Courier New'';font-size:12pt;">Mono</span></p>');
+  try
+    LRun := TWAParagraphBlock(LDocument.Blocks[0]).Runs[0];
+    Assert.AreEqual('Courier New', LRun.Format.FontName);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_EmptyFontFamilyValue_DoesNotRaise;
+var
+  LDocument: TWARichDocument;
+begin
+  // font-family:; (nothing before the separator) must not crash: an
+  // empty string split by ',' returns a zero-length array in Delphi, so
+  // indexing [0] unconditionally would read out of bounds.
+  LDocument := TWAHtmlDocumentParser.Parse(
+    '<p><span style="font-family:;font-size:12pt;">Text</span></p>');
+  try
+    Assert.AreEqual('', TWAParagraphBlock(LDocument.Blocks[0]).Runs[0].Format.FontName);
   finally
     LDocument.Free;
   end;

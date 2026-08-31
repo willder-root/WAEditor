@@ -38,6 +38,9 @@ type
 
     [Test]
     procedure Render_LineBreakRun_EmitsSingleBrTagNotNewParagraph;
+
+    [Test]
+    procedure Render_MultiWordFontName_IsQuotedInStyle;
   end;
 
 implementation
@@ -90,7 +93,7 @@ begin
       TWARunFormat.Create(False, False, False, 'Consolas', 18));
     LHtml := TWAHtmlDocumentRenderer.Render(LDocument);
 
-    Assert.Contains(LHtml, 'font-family:Consolas');
+    Assert.Contains(LHtml, 'font-family:''Consolas''');
     Assert.Contains(LHtml, 'font-size:18pt');
   finally
     LDocument.Free;
@@ -214,6 +217,26 @@ begin
     // separate <p>...</p> elements instead of sharing one.
     Assert.Contains(LHtml, 'Line one<br>Line two');
     Assert.IsFalse(LHtml.Contains('</p><p'));
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentRendererTests.Render_MultiWordFontName_IsQuotedInStyle;
+var
+  LDocument: TWARichDocument;
+  LHtml: string;
+begin
+  // An unquoted multi-word font-family (font-family:Courier New;) is
+  // invalid CSS; MSHTML/Trident silently ignores it instead of applying
+  // the font.
+  LDocument := TWARichDocument.Create;
+  try
+    LDocument.AddParagraph.AddRun('Monospace',
+      TWARunFormat.Create(False, False, False, 'Courier New', 12));
+    LHtml := TWAHtmlDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LHtml, 'font-family:''Courier New'';');
   finally
     LDocument.Free;
   end;
