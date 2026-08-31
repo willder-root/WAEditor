@@ -184,6 +184,14 @@ object WAMainForm: TWAMainForm
         Caption = 'Salvar &como...'
         OnClick = MenuFileSaveAsClick
       end
+      object MenuFileOpenRtf: TMenuItem
+        Caption = 'Abrir &RTF...'
+        OnClick = MenuFileOpenRtfClick
+      end
+      object MenuFileSaveAsRtf: TMenuItem
+        Caption = 'Salvar como RT&F...'
+        OnClick = MenuFileSaveAsRtfClick
+      end
       object MenuFileSeparator: TMenuItem
         Caption = '-'
       end

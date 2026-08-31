@@ -10,7 +10,8 @@ uses
   WAEditor.Domain.Types,
   WAEditor.Application.IHtmlEditorEngine,
   WAEditor.Application.IHtmlDocumentStorage,
-  WAEditor.Application.DocumentService;
+  WAEditor.Application.DocumentService,
+  WAEditor.Application.RtfDocumentService;
 
 type
   TWAMainForm = class(TForm)
@@ -20,6 +21,8 @@ type
     MenuFileOpen: TMenuItem;
     MenuFileSave: TMenuItem;
     MenuFileSaveAs: TMenuItem;
+    MenuFileOpenRtf: TMenuItem;
+    MenuFileSaveAsRtf: TMenuItem;
     MenuFileSeparator: TMenuItem;
     MenuFileExit: TMenuItem;
     ToolbarPanel: TPanel;
@@ -42,6 +45,8 @@ type
     procedure MenuFileOpenClick(Sender: TObject);
     procedure MenuFileSaveClick(Sender: TObject);
     procedure MenuFileSaveAsClick(Sender: TObject);
+    procedure MenuFileOpenRtfClick(Sender: TObject);
+    procedure MenuFileSaveAsRtfClick(Sender: TObject);
     procedure MenuFileExitClick(Sender: TObject);
     procedure ButtonBoldClick(Sender: TObject);
     procedure ButtonItalicClick(Sender: TObject);
@@ -61,6 +66,7 @@ type
     FEngine: IWAHtmlEditorEngine;
     FStorage: IWAHtmlDocumentStorage;
     FDocumentService: TWADocumentService;
+    FRtfDocumentService: TWARtfDocumentService;
     FEditorReady: Boolean;
     procedure SetToolbarEnabled(AEnabled: Boolean);
     procedure ApplyAlignment(AAlignment: TWATextAlignment);
@@ -91,6 +97,7 @@ uses
 
 const
   WA_HTML_DOCUMENT_FILTER = 'Documentos HTML (*.html;*.htm)|*.html;*.htm|Todos os arquivos (*.*)|*.*';
+  WA_RTF_DOCUMENT_FILTER = 'Documentos RTF (*.rtf)|*.rtf|Todos os arquivos (*.*)|*.*';
 
 procedure TWAMainForm.FormCreate(Sender: TObject);
 begin
@@ -105,10 +112,7 @@ begin
   FEngine := TWAWebBrowserEditorEngine.Create(WebBrowser1);
   FStorage := TWAFileHtmlDocumentStorage.Create;
   FDocumentService := TWADocumentService.Create(FEngine, FStorage);
-
-  OpenDialog1.Filter := WA_HTML_DOCUMENT_FILTER;
-  SaveDialog1.Filter := WA_HTML_DOCUMENT_FILTER;
-  SaveDialog1.DefaultExt := 'html';
+  FRtfDocumentService := TWARtfDocumentService.Create(FEngine, FStorage);
 
   SetToolbarEnabled(False);
   WebBrowser1.Navigate('about:blank');
@@ -116,6 +120,7 @@ end;
 
 destructor TWAMainForm.Destroy;
 begin
+  FRtfDocumentService.Free;
   FDocumentService.Free;
   inherited Destroy;
 end;
@@ -139,6 +144,8 @@ begin
   MenuFileOpen.Enabled := AEnabled;
   MenuFileSave.Enabled := AEnabled;
   MenuFileSaveAs.Enabled := AEnabled;
+  MenuFileOpenRtf.Enabled := AEnabled;
+  MenuFileSaveAsRtf.Enabled := AEnabled;
 end;
 
 procedure TWAMainForm.MenuFileNewClick(Sender: TObject);
@@ -148,6 +155,7 @@ end;
 
 procedure TWAMainForm.MenuFileOpenClick(Sender: TObject);
 begin
+  OpenDialog1.Filter := WA_HTML_DOCUMENT_FILTER;
   if OpenDialog1.Execute then
   begin
     try
@@ -161,6 +169,8 @@ end;
 
 procedure TWAMainForm.SaveAs;
 begin
+  SaveDialog1.Filter := WA_HTML_DOCUMENT_FILTER;
+  SaveDialog1.DefaultExt := 'html';
   if SaveDialog1.Execute then
   begin
     try
@@ -183,6 +193,35 @@ end;
 procedure TWAMainForm.MenuFileSaveAsClick(Sender: TObject);
 begin
   SaveAs;
+end;
+
+procedure TWAMainForm.MenuFileOpenRtfClick(Sender: TObject);
+begin
+  OpenDialog1.Filter := WA_RTF_DOCUMENT_FILTER;
+  if OpenDialog1.Execute then
+  begin
+    try
+      FRtfDocumentService.OpenRtfDocument(OpenDialog1.FileName);
+    except
+      on E: Exception do
+        MessageDlg('Não foi possível abrir o arquivo RTF: ' + E.Message, mtError, [mbOK], 0);
+    end;
+  end;
+end;
+
+procedure TWAMainForm.MenuFileSaveAsRtfClick(Sender: TObject);
+begin
+  SaveDialog1.Filter := WA_RTF_DOCUMENT_FILTER;
+  SaveDialog1.DefaultExt := 'rtf';
+  if SaveDialog1.Execute then
+  begin
+    try
+      FRtfDocumentService.SaveRtfDocument(SaveDialog1.FileName);
+    except
+      on E: Exception do
+        MessageDlg('Não foi possível salvar o arquivo RTF: ' + E.Message, mtError, [mbOK], 0);
+    end;
+  end;
 end;
 
 procedure TWAMainForm.MenuFileExitClick(Sender: TObject);
