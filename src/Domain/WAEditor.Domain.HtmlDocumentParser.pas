@@ -27,6 +27,16 @@ uses
   WAEditor.Domain.AlignmentMapper,
   WAEditor.Domain.FontSizeScale;
 
+function DotDecimalFormatSettings: TFormatSettings;
+begin
+  // CSS numbers always use '.' as the decimal separator regardless of
+  // locale; without forcing it here, TryStrToFloat would fail on a
+  // system whose locale uses ',' (e.g. pt-BR), silently dropping any
+  // fractional font size just like StrToIntDef does for non-integers.
+  Result := TFormatSettings.Create;
+  Result.DecimalSeparator := '.';
+end;
+
 type
   TWAHtmlParserState = class
   private
@@ -102,8 +112,9 @@ end;
 function ParseStyleFormat(const AStyle: string; ABase: TWARunFormat): TWARunFormat;
 var
   LParts: TArray<string>;
-  LPart, LProp, LValue: string;
+  LPart, LProp, LValue, LSizeText: string;
   LColonPos, LPtPos: Integer;
+  LSizeValue: Double;
 begin
   Result := ABase;
   LParts := AStyle.Split([';']);
@@ -128,7 +139,18 @@ begin
     begin
       LPtPos := Pos('pt', LowerCase(LValue));
       if LPtPos > 0 then
-        Result.FontSizeInPoints := StrToIntDef(Trim(Copy(LValue, 1, LPtPos - 1)), Result.FontSizeInPoints);
+      begin
+        LSizeText := Trim(Copy(LValue, 1, LPtPos - 1));
+        // A live WYSIWYG surface can report a fractional point size
+        // (e.g. "10.5pt"). StrToIntDef alone silently drops these
+        // (returning the fallback, typically 0/unset) since "10.5"
+        // isn't a valid integer, discarding the configured size
+        // entirely. Parse as a float first and round.
+        if TryStrToFloat(LSizeText, LSizeValue, DotDecimalFormatSettings) then
+          Result.FontSizeInPoints := Round(LSizeValue)
+        else
+          Result.FontSizeInPoints := StrToIntDef(LSizeText, Result.FontSizeInPoints);
+      end;
     end
     else if (LProp = 'font-weight') and (LowerCase(LValue) = 'bold') then
       Result.Bold := True
