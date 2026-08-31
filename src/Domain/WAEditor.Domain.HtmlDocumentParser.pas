@@ -115,7 +115,15 @@ begin
     LProp := LowerCase(Trim(Copy(LPart, 1, LColonPos - 1)));
     LValue := Trim(Copy(LPart, LColonPos + 1, MaxInt));
     if LProp = 'font-family' then
-      Result.FontName := Trim(LValue.Split([','])[0]).DequotedString('"').DequotedString('''')
+    begin
+      // LValue.Split([',']) returns a zero-length array for an empty
+      // string (e.g. a malformed "font-family:;" with nothing before
+      // the separator), so indexing [0] unconditionally would read out
+      // of bounds.
+      if LValue <> '' then
+        Result.FontName :=
+          DecodeHtmlEntities(Trim(LValue.Split([','])[0])).DequotedString('"').DequotedString('''');
+    end
     else if LProp = 'font-size' then
     begin
       LPtPos := Pos('pt', LowerCase(LValue));
