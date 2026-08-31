@@ -45,6 +45,7 @@ type
     function CurrentFormat: TWARunFormat;
     procedure EnsureParagraph;
     procedure AppendText(const AText: string);
+    procedure AppendLineBreak;
     procedure HandleOpenTag(const ATagName, AAttributes: string);
     procedure HandleCloseTag(const ATagName: string);
     procedure ProcessTag(const ATag: string);
@@ -210,6 +211,19 @@ begin
   end;
 end;
 
+procedure TWAHtmlParserState.AppendLineBreak;
+begin
+  if FCurrentCell <> nil then
+    FCurrentCell.Runs.Add(TWARun.CreateLineBreak)
+  else if FCurrentListItem <> nil then
+    FCurrentListItem.Runs.Add(TWARun.CreateLineBreak)
+  else
+  begin
+    EnsureParagraph;
+    FCurrentParagraph.Runs.Add(TWARun.CreateLineBreak);
+  end;
+end;
+
 procedure TWAHtmlParserState.HandleOpenTag(const ATagName, AAttributes: string);
 var
   LFormat: TWARunFormat;
@@ -253,13 +267,14 @@ begin
   else if (ATagName = 'p') or (ATagName = 'div') then
   begin
     if FCurrentCell = nil then
+    begin
       FCurrentParagraph := FDocument.AddParagraph(ParseAlignmentAttribute(AAttributes, taLeftAlign));
+      FCurrentParagraph.HasBorder :=
+        Pos('border', LowerCase(ExtractAttribute(AAttributes, 'style'))) > 0;
+    end;
   end
   else if ATagName = 'br' then
-  begin
-    if FCurrentCell = nil then
-      FCurrentParagraph := FDocument.AddParagraph(taLeftAlign);
-  end
+    AppendLineBreak
   else if ATagName = 'table' then
   begin
     if not TryStrToInt(ExtractAttribute(AAttributes, 'border'), LBorder) then

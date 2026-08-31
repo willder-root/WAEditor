@@ -41,6 +41,7 @@ type
     FGroupStack: TStack<TWARtfGroupSnapshot>;
     FCurrentFormat: TWARunFormat;
     FCurrentAlignment: TWATextAlignment;
+    FCurrentHasBorder: Boolean;
     FCurrentParagraph: TWAParagraphBlock;
     FCurrentTable: TWATableBlock;
     FCurrentRow: TWATableRow;
@@ -63,6 +64,7 @@ type
     procedure SkipWhitespace;
     procedure EnsureParagraph;
     procedure AppendChar(AChar: Char);
+    procedure AppendLineBreak;
     procedure ClosePendingParagraph;
 
     procedure ParseGroup;
@@ -176,7 +178,10 @@ end;
 procedure TWARtfParserState.EnsureParagraph;
 begin
   if (FCurrentCell = nil) and (FCurrentListItem = nil) and (FCurrentParagraph = nil) then
+  begin
     FCurrentParagraph := FDocument.AddParagraph(FCurrentAlignment);
+    FCurrentParagraph.HasBorder := FCurrentHasBorder;
+  end;
 end;
 
 procedure TWARtfParserState.ClosePendingParagraph;
@@ -200,7 +205,7 @@ begin
 
   if FCurrentCell <> nil then
   begin
-    if (FCurrentCell.Runs.Count > 0) and
+    if (FCurrentCell.Runs.Count > 0) and (not FCurrentCell.Runs.Last.IsLineBreak) and
        FCurrentCell.Runs.Last.Format.EqualsFormat(FCurrentFormat) then
       FCurrentCell.Runs.Last.Text := FCurrentCell.Runs.Last.Text + AChar
     else
@@ -208,7 +213,7 @@ begin
   end
   else if FCurrentListItem <> nil then
   begin
-    if (FCurrentListItem.Runs.Count > 0) and
+    if (FCurrentListItem.Runs.Count > 0) and (not FCurrentListItem.Runs.Last.IsLineBreak) and
        FCurrentListItem.Runs.Last.Format.EqualsFormat(FCurrentFormat) then
       FCurrentListItem.Runs.Last.Text := FCurrentListItem.Runs.Last.Text + AChar
     else
@@ -217,11 +222,24 @@ begin
   else
   begin
     EnsureParagraph;
-    if (FCurrentParagraph.Runs.Count > 0) and
+    if (FCurrentParagraph.Runs.Count > 0) and (not FCurrentParagraph.Runs.Last.IsLineBreak) and
        FCurrentParagraph.Runs.Last.Format.EqualsFormat(FCurrentFormat) then
       FCurrentParagraph.Runs.Last.Text := FCurrentParagraph.Runs.Last.Text + AChar
     else
       FCurrentParagraph.AddRun(AChar, FCurrentFormat);
+  end;
+end;
+
+procedure TWARtfParserState.AppendLineBreak;
+begin
+  if FCurrentCell <> nil then
+    FCurrentCell.Runs.Add(TWARun.CreateLineBreak)
+  else if FCurrentListItem <> nil then
+    FCurrentListItem.Runs.Add(TWARun.CreateLineBreak)
+  else
+  begin
+    EnsureParagraph;
+    FCurrentParagraph.Runs.Add(TWARun.CreateLineBreak);
   end;
 end;
 
@@ -251,8 +269,11 @@ begin
   else if AName = 'pard' then
   begin
     FCurrentAlignment := taLeftAlign;
+    FCurrentHasBorder := False;
     FListItemPending := False;
   end
+  else if (AName = 'brdrl') or (AName = 'brdrr') or (AName = 'brdrt') or (AName = 'brdrb') then
+    FCurrentHasBorder := True
   else if AName = 'fi' then
   begin
     // Only start a new item this way when one hasn't already been opened
@@ -302,6 +323,12 @@ begin
     FCurrentAlignment := taRightAlign
   else if AName = 'qj' then
     FCurrentAlignment := taJustifyAlign
+  else if AName = 'plain' then
+    // Resets character formatting to the document default. Writers that
+    // don't scope each run in its own {...} group (relying on \plain
+    // between paragraphs instead) need this to avoid bold/italic/
+    // underline/font from one paragraph bleeding into the next.
+    FCurrentFormat := TWARunFormat.Plain
   else if AName = 'b' then
     FCurrentFormat.Bold := (not AHasParam) or (AParam <> 0)
   else if AName = 'i' then
@@ -333,7 +360,9 @@ begin
   else if AName = 'cell' then
     FCurrentCell := nil
   else if AName = 'row' then
-    FCurrentRow := nil;
+    FCurrentRow := nil
+  else if AName = 'line' then
+    AppendLineBreak;
   // Any other control word (\rtf, \ansi, \ansicpg, \deff, \uc, \viewkind,
   // \cellx and similar) carries no meaning for the bounded model and is
   // intentionally ignored.
