@@ -6,6 +6,16 @@ uses
   System.Generics.Collections,
   WAEditor.Domain.Types;
 
+const
+  // The HTML renderer represents a checkbox/radio run as one of these
+  // plain Unicode glyphs rather than an <input>; the HTML parser scans
+  // decoded text for them to reconstruct the run on the way back in.
+  // Shared here so both stay in sync.
+  WA_CHECKED_BOX_GLYPH = #$2611; // BALLOT BOX WITH CHECK
+  WA_UNCHECKED_BOX_GLYPH = #$2610; // BALLOT BOX
+  WA_CHECKED_RADIO_GLYPH = #$25C9; // FISHEYE
+  WA_UNCHECKED_RADIO_GLYPH = #$25CB; // WHITE CIRCLE
+
 type
   /// Character-level formatting for one run of text. Deliberately
   /// independent of both RTF control words and HTML markup, so the same
@@ -31,8 +41,16 @@ type
     // TWAParagraphBlock/\par already represents. When True, Text is
     // always empty and Format is not meaningful.
     IsLineBreak: Boolean;
+    // An inline checkbox or radio button (RTF's
+    // {\field{\*\fldinst FORMCHECKBOX _Check=.../_Radio=...}}, rendered/
+    // parsed as a Unicode glyph on the HTML side). When True, Text is
+    // always empty and Format is not meaningful.
+    IsCheckbox: Boolean;
+    IsChecked: Boolean;
+    IsRadio: Boolean;
     constructor Create(const AText: string; const AFormat: TWARunFormat);
     class function CreateLineBreak: TWARun; static;
+    class function CreateCheckbox(AChecked: Boolean; AIsRadio: Boolean = False): TWARun; static;
   end;
 
   TWABlock = class abstract
@@ -146,6 +164,14 @@ class function TWARun.CreateLineBreak: TWARun;
 begin
   Result := TWARun.Create('', TWARunFormat.Plain);
   Result.IsLineBreak := True;
+end;
+
+class function TWARun.CreateCheckbox(AChecked: Boolean; AIsRadio: Boolean): TWARun;
+begin
+  Result := TWARun.Create('', TWARunFormat.Plain);
+  Result.IsCheckbox := True;
+  Result.IsChecked := AChecked;
+  Result.IsRadio := AIsRadio;
 end;
 
 { TWAParagraphBlock }
