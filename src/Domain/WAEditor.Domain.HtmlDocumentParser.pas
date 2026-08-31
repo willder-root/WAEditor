@@ -114,6 +114,8 @@ type
 
     function CurrentFormat: TWARunFormat;
     procedure EnsureParagraph;
+    procedure AppendRun(ARun: TWARun);
+    procedure AppendTextSegment(const AText: string);
     procedure AppendText(const AText: string);
     procedure AppendLineBreak;
     procedure HandleOpenTag(const ATagName, AAttributes: string);
@@ -281,35 +283,72 @@ begin
     FCurrentParagraph := FDocument.AddParagraph(taLeftAlign);
 end;
 
+procedure TWAHtmlParserState.AppendRun(ARun: TWARun);
+begin
+  if FCurrentCell <> nil then
+    FCurrentCell.Runs.Add(ARun)
+  else if FCurrentListItem <> nil then
+    FCurrentListItem.Runs.Add(ARun)
+  else
+  begin
+    EnsureParagraph;
+    FCurrentParagraph.Runs.Add(ARun);
+  end;
+end;
+
+procedure TWAHtmlParserState.AppendTextSegment(const AText: string);
+begin
+  if AText = '' then
+    Exit;
+  if FCurrentCell <> nil then
+    FCurrentCell.AddRun(AText, CurrentFormat)
+  else if FCurrentListItem <> nil then
+    FCurrentListItem.AddRun(AText, CurrentFormat)
+  else
+  begin
+    EnsureParagraph;
+    FCurrentParagraph.AddRun(AText, CurrentFormat);
+  end;
+end;
+
 procedure TWAHtmlParserState.AppendText(const AText: string);
 var
-  LDecoded: string;
+  LDecoded, LSegment: string;
+  I: Integer;
 begin
   LDecoded := DecodeHtmlEntities(AText);
   if LDecoded = '' then
     Exit;
-  if FCurrentCell <> nil then
-    FCurrentCell.AddRun(LDecoded, CurrentFormat)
-  else if FCurrentListItem <> nil then
-    FCurrentListItem.AddRun(LDecoded, CurrentFormat)
-  else
+
+  // A checkbox/radio glyph (this renderer's own inline representation
+  // of such a run) can appear anywhere within a run of decoded text; it
+  // must become its own run rather than plain characters, so splitting
+  // it back out to RTF still emits FORMCHECKBOX.
+  LSegment := '';
+  for I := 1 to Length(LDecoded) do
   begin
-    EnsureParagraph;
-    FCurrentParagraph.AddRun(LDecoded, CurrentFormat);
+    // Note: these glyphs all have an ordinal value above 255, so they
+    // cannot be tested with CharInSet/a Pascal char set (TSysCharSet
+    // tops out at 255, silently truncating anything above it) -- plain
+    // equality is required here.
+    if (LDecoded[I] = WA_CHECKED_BOX_GLYPH) or (LDecoded[I] = WA_UNCHECKED_BOX_GLYPH) or
+       (LDecoded[I] = WA_CHECKED_RADIO_GLYPH) or (LDecoded[I] = WA_UNCHECKED_RADIO_GLYPH) then
+    begin
+      AppendTextSegment(LSegment);
+      LSegment := '';
+      AppendRun(TWARun.CreateCheckbox(
+        (LDecoded[I] = WA_CHECKED_BOX_GLYPH) or (LDecoded[I] = WA_CHECKED_RADIO_GLYPH),
+        (LDecoded[I] = WA_CHECKED_RADIO_GLYPH) or (LDecoded[I] = WA_UNCHECKED_RADIO_GLYPH)));
+    end
+    else
+      LSegment := LSegment + LDecoded[I];
   end;
+  AppendTextSegment(LSegment);
 end;
 
 procedure TWAHtmlParserState.AppendLineBreak;
 begin
-  if FCurrentCell <> nil then
-    FCurrentCell.Runs.Add(TWARun.CreateLineBreak)
-  else if FCurrentListItem <> nil then
-    FCurrentListItem.Runs.Add(TWARun.CreateLineBreak)
-  else
-  begin
-    EnsureParagraph;
-    FCurrentParagraph.Runs.Add(TWARun.CreateLineBreak);
-  end;
+  AppendRun(TWARun.CreateLineBreak);
 end;
 
 procedure TWAHtmlParserState.HandleOpenTag(const ATagName, AAttributes: string);
