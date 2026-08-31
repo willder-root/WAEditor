@@ -73,6 +73,9 @@ type
 
     [Test]
     procedure Parse_FontSizeWithUnrecognizedKeyword_LeavesSizeUnchanged;
+
+    [Test]
+    procedure Parse_HtmlEscapedQuotedFontFamily_DecodesBeforeSplittingOnSemicolons;
   end;
 
 implementation
@@ -358,6 +361,29 @@ begin
   LDocument := TWAHtmlDocumentParser.Parse('<p><span style="font-size:medium;">Text</span></p>');
   try
     Assert.AreEqual(0, TWAParagraphBlock(LDocument.Blocks[0]).Runs[0].Format.FontSizeInPoints);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_HtmlEscapedQuotedFontFamily_DecodesBeforeSplittingOnSemicolons;
+var
+  LDocument: TWARichDocument;
+  LRun: TWARun;
+begin
+  // A live WYSIWYG surface serializes a quoted multi-word font-family
+  // as font-family: &quot;Courier New&quot;; inside the (already
+  // double-quoted) style="..." attribute. Since &quot; itself ends in
+  // a semicolon like every HTML entity, splitting the raw attribute
+  // text on ';' before decoding cuts this value apart mid-entity
+  // (e.g. "font-family: &quot" / "Courier New&quot" / ""), corrupting
+  // the font name and losing the font-size that followed it.
+  LDocument := TWAHtmlDocumentParser.Parse(
+    '<p><span style="font-size: 12pt; font-family: &quot;Courier New&quot;;">Text</span></p>');
+  try
+    LRun := TWAParagraphBlock(LDocument.Blocks[0]).Runs[0];
+    Assert.AreEqual('Courier New', LRun.Format.FontName);
+    Assert.AreEqual(12, LRun.Format.FontSizeInPoints);
   finally
     LDocument.Free;
   end;

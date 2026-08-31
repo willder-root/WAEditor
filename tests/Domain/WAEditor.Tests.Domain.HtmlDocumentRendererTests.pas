@@ -237,6 +237,9 @@ begin
     LHtml := TWAHtmlDocumentRenderer.Render(LDocument);
 
     Assert.Contains(LHtml, 'font-family:''Courier New'';');
+    // Single quotes, never HTML-escaped double quotes: the value must
+    // not break out of the surrounding style="..." attribute.
+    Assert.IsFalse(LHtml.Contains('&quot;'));
   finally
     LDocument.Free;
   end;
