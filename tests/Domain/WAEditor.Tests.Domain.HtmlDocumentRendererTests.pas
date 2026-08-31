@@ -32,6 +32,9 @@ type
 
     [Test]
     procedure Render_OrderedList_EmitsOlWithLiItems;
+
+    [Test]
+    procedure Render_Paragraph_EmitsZeroMarginToAvoidHostSpacing;
   end;
 
 implementation
@@ -163,6 +166,26 @@ begin
     Assert.IsTrue(LHtml.StartsWith('<ol>'));
     Assert.IsTrue(LHtml.EndsWith('</ol>'));
     Assert.Contains(LHtml, '<li>Step one</li>');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentRendererTests.Render_Paragraph_EmitsZeroMarginToAvoidHostSpacing;
+var
+  LDocument: TWARichDocument;
+  LHtml: string;
+begin
+  // Without an explicit margin:0, a host applying its own default <p>
+  // margin (e.g. innerHTML in a quirks-mode document, where adjacent
+  // margins don't collapse) visibly multiplies the gap a blank RTF line
+  // is supposed to represent.
+  LDocument := TWARichDocument.Create;
+  try
+    LDocument.AddParagraph.AddRun('Hi', TWARunFormat.Plain);
+    LHtml := TWAHtmlDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LHtml, 'margin:0;');
   finally
     LDocument.Free;
   end;

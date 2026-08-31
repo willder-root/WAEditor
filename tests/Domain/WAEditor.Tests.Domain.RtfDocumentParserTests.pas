@@ -59,6 +59,12 @@ type
 
     [Test]
     procedure Parse_RealWorldListtextUnorderedList_ProducesUnorderedListFromFontSwitch;
+
+    [Test]
+    procedure Parse_BlankRtfLine_IsPreservedAsEmptyParagraph;
+
+    [Test]
+    procedure Parse_ConsecutiveBlankRtfLines_ProduceOneEmptyParagraphEach;
   end;
 
 implementation
@@ -301,8 +307,12 @@ begin
     '\pard\plain\par' +
     '}');
   try
-    Assert.AreEqual(1, LDocument.Blocks.Count);
-    LList := TWAListBlock(LDocument.Blocks[0]);
+    // The leading and trailing \pard\plain\par are blank lines and are
+    // now preserved as their own empty paragraphs (see
+    // Parse_BlankRtfLine_IsPreservedAsEmptyParagraph), so the list sits
+    // between them rather than being the document's only block.
+    Assert.AreEqual(3, LDocument.Blocks.Count);
+    LList := TWAListBlock(LDocument.Blocks[1]);
     Assert.AreEqual(Ord(lkOrdered), Ord(LList.Kind));
     Assert.AreEqual(2, LList.Items.Count);
     Assert.AreEqual('225526', LList.Items[0].Runs[0].Text);
@@ -331,6 +341,42 @@ begin
     Assert.AreEqual(Ord(lkUnordered), Ord(LList.Kind));
     Assert.AreEqual('154545', LList.Items[0].Runs[0].Text);
     Assert.AreEqual('51454543453', LList.Items[1].Runs[0].Text);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_BlankRtfLine_IsPreservedAsEmptyParagraph;
+var
+  LDocument: TWARichDocument;
+begin
+  // A \par with nothing between it and the preceding \pard is a blank
+  // line in the source document and must survive as an empty paragraph,
+  // not vanish: otherwise the line break it represents is lost, and
+  // renderers that add spacing per <p> end up misrepresenting the gap
+  // between the surrounding real paragraphs.
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 \pard\ql First\par\pard\ql \par\pard\ql Second\par}');
+  try
+    Assert.AreEqual(3, LDocument.Blocks.Count);
+    Assert.AreEqual('First', TWAParagraphBlock(LDocument.Blocks[0]).Runs[0].Text);
+    Assert.AreEqual(0, TWAParagraphBlock(LDocument.Blocks[1]).Runs.Count);
+    Assert.AreEqual('Second', TWAParagraphBlock(LDocument.Blocks[2]).Runs[0].Text);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_ConsecutiveBlankRtfLines_ProduceOneEmptyParagraphEach;
+var
+  LDocument: TWARichDocument;
+begin
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 \pard\ql First\par\pard\ql \par\pard\ql \par\pard\ql Second\par}');
+  try
+    Assert.AreEqual(4, LDocument.Blocks.Count);
+    Assert.AreEqual(0, TWAParagraphBlock(LDocument.Blocks[1]).Runs.Count);
+    Assert.AreEqual(0, TWAParagraphBlock(LDocument.Blocks[2]).Runs.Count);
   finally
     LDocument.Free;
   end;
