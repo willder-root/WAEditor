@@ -176,7 +176,13 @@ var
   LColonPos, LSizeInPoints: Integer;
 begin
   Result := ABase;
-  LParts := AStyle.Split([';']);
+  // Decode entities before splitting on ';': an HTML entity like &quot;
+  // itself ends in a semicolon (as every named/numeric entity does), so
+  // splitting the raw attribute text first cuts entities like
+  // font-family: &quot;Courier New&quot;; into fragments mid-entity
+  // (e.g. "font-family: &quot" / "Courier New&quot" / ""), corrupting
+  // the font name instead of just unescaping it.
+  LParts := DecodeHtmlEntities(AStyle).Split([';']);
   for LPart in LParts do
   begin
     LColonPos := Pos(':', LPart);
