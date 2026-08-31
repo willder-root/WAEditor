@@ -37,6 +37,66 @@ begin
   Result.DecimalSeparator := '.';
 end;
 
+const
+  // Matches the common browser default of 16px/1em when a relative
+  // unit (em/rem/%) has no concrete inherited size to scale from.
+  WA_DEFAULT_BROWSER_FONT_SIZE_PT = 12;
+
+/// Converts a CSS <length> font-size value (e.g. "10.5pt", "16px",
+/// "1.5em", "150%", "0.5in") to whole points. ABaseFontSizeInPoints is
+/// the size already inherited at this point (used to resolve the
+/// relative units em/rem/%); pass 0 if there is none, in which case the
+/// common 16px/12pt browser default is used instead. Returns False for
+/// an empty value, a bare number (CSS requires a unit for font-size,
+/// unlike line-height) or an unrecognized/keyword unit (e.g. "medium").
+function TryParseCssFontSizeToPoints(const AValue: string; ABaseFontSizeInPoints: Integer;
+  out APoints: Integer): Boolean;
+var
+  I: Integer;
+  LNumberPart, LUnit: string;
+  LNumericValue: Double;
+  LBasePoints: Double;
+begin
+  Result := False;
+  I := 1;
+  if (I <= Length(AValue)) and CharInSet(AValue[I], ['+', '-']) then
+    Inc(I);
+  while (I <= Length(AValue)) and CharInSet(AValue[I], ['0'..'9', '.']) do
+    Inc(I);
+  LNumberPart := Trim(Copy(AValue, 1, I - 1));
+  LUnit := LowerCase(Trim(Copy(AValue, I, MaxInt)));
+
+  if (LNumberPart = '') or (LUnit = '') then
+    Exit;
+  if not TryStrToFloat(LNumberPart, LNumericValue, DotDecimalFormatSettings) then
+    Exit;
+
+  if ABaseFontSizeInPoints > 0 then
+    LBasePoints := ABaseFontSizeInPoints
+  else
+    LBasePoints := WA_DEFAULT_BROWSER_FONT_SIZE_PT;
+
+  Result := True;
+  if LUnit = 'pt' then
+    APoints := Round(LNumericValue)
+  else if LUnit = 'px' then
+    APoints := Round(LNumericValue * 0.75)
+  else if LUnit = 'pc' then
+    APoints := Round(LNumericValue * 12)
+  else if LUnit = 'in' then
+    APoints := Round(LNumericValue * 72)
+  else if LUnit = 'cm' then
+    APoints := Round(LNumericValue * 28.3464567)
+  else if LUnit = 'mm' then
+    APoints := Round(LNumericValue * 2.83464567)
+  else if (LUnit = 'em') or (LUnit = 'rem') then
+    APoints := Round(LNumericValue * LBasePoints)
+  else if LUnit = '%' then
+    APoints := Round(LNumericValue / 100 * LBasePoints)
+  else
+    Result := False; // unrecognized/keyword unit (e.g. "medium", "larger")
+end;
+
 type
   TWAHtmlParserState = class
   private
@@ -112,9 +172,8 @@ end;
 function ParseStyleFormat(const AStyle: string; ABase: TWARunFormat): TWARunFormat;
 var
   LParts: TArray<string>;
-  LPart, LProp, LValue, LSizeText: string;
-  LColonPos, LPtPos: Integer;
-  LSizeValue: Double;
+  LPart, LProp, LValue: string;
+  LColonPos, LSizeInPoints: Integer;
 begin
   Result := ABase;
   LParts := AStyle.Split([';']);
@@ -137,20 +196,13 @@ begin
     end
     else if LProp = 'font-size' then
     begin
-      LPtPos := Pos('pt', LowerCase(LValue));
-      if LPtPos > 0 then
-      begin
-        LSizeText := Trim(Copy(LValue, 1, LPtPos - 1));
-        // A live WYSIWYG surface can report a fractional point size
-        // (e.g. "10.5pt"). StrToIntDef alone silently drops these
-        // (returning the fallback, typically 0/unset) since "10.5"
-        // isn't a valid integer, discarding the configured size
-        // entirely. Parse as a float first and round.
-        if TryStrToFloat(LSizeText, LSizeValue, DotDecimalFormatSettings) then
-          Result.FontSizeInPoints := Round(LSizeValue)
-        else
-          Result.FontSizeInPoints := StrToIntDef(LSizeText, Result.FontSizeInPoints);
-      end;
+      // A live WYSIWYG surface can report font-size in any CSS length
+      // unit (pt, px, em, %, ...) depending on how it computed the
+      // style, and as a fractional value; only recognizing a bare
+      // integer "pt" silently dropped everything else, discarding the
+      // configured size entirely instead of converting it.
+      if TryParseCssFontSizeToPoints(Trim(LValue), Result.FontSizeInPoints, LSizeInPoints) then
+        Result.FontSizeInPoints := LSizeInPoints;
     end
     else if (LProp = 'font-weight') and (LowerCase(LValue) = 'bold') then
       Result.Bold := True
