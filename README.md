@@ -10,6 +10,7 @@ O editor usa um `TWebBrowser` em modo `designMode="On"` (contentEditable) como s
 - **Parágrafo**: alinhamento (esquerda, centro, direita, justificado).
 - **Estilo de caractere**: negrito, itálico, sublinhado.
 - **Tabela**: inserção com linhas, colunas e largura de borda configuráveis.
+- **Listas**: não ordenada (marcadores) e ordenada (numerada).
 - **Documento HTML**: novo, abrir e salvar (`.html`).
 - **Documento RTF**: abrir e salvar (`.rtf`), com conversão bidirecional HTML WYSIWYG ⇄ RTF preservando toda a formatação acima (ver [Conversão HTML ⇄ RTF](#conversão-html--rtf)).
 
