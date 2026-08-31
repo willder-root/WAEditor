@@ -74,6 +74,12 @@ type
 
     [Test]
     procedure Parse_PlainControlWord_ResetsCharacterFormattingBetweenParagraphs;
+
+    [Test]
+    procedure Parse_FormCheckboxField_Checked_ProducesCheckedCheckboxRun;
+
+    [Test]
+    procedure Parse_FormCheckboxField_RadioOff_ProducesUncheckedRadioRun;
   end;
 
 implementation
@@ -442,6 +448,43 @@ begin
   try
     Assert.IsTrue(TWAParagraphBlock(LDocument.Blocks[0]).Runs[0].Format.Bold);
     Assert.IsFalse(TWAParagraphBlock(LDocument.Blocks[1]).Runs[0].Format.Bold);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_FormCheckboxField_Checked_ProducesCheckedCheckboxRun;
+var
+  LDocument: TWARichDocument;
+  LRun: TWARun;
+begin
+  // Matches WPTools' own serialization of a checked FORMCHECKBOX field.
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 \pard\ql ' +
+    '{\field{\*\fldinst{FORMCHECKBOX _Check=true}}{\*\fldrslt{true}}} Teste\par}');
+  try
+    LRun := TWAParagraphBlock(LDocument.Blocks[0]).Runs[0];
+    Assert.IsTrue(LRun.IsCheckbox);
+    Assert.IsTrue(LRun.IsChecked);
+    Assert.IsFalse(LRun.IsRadio);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_FormCheckboxField_RadioOff_ProducesUncheckedRadioRun;
+var
+  LDocument: TWARichDocument;
+  LRun: TWARun;
+begin
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 \pard\ql ' +
+    '{\field{\*\fldinst{FORMCHECKBOX _Radio=off}}{\*\fldrslt{off}}} Teste\par}');
+  try
+    LRun := TWAParagraphBlock(LDocument.Blocks[0]).Runs[0];
+    Assert.IsTrue(LRun.IsCheckbox);
+    Assert.IsFalse(LRun.IsChecked);
+    Assert.IsTrue(LRun.IsRadio);
   finally
     LDocument.Free;
   end;

@@ -47,6 +47,12 @@ type
 
     [Test]
     procedure Render_FontNameWithRtfSpecialCharacters_IsEscapedInFontTable;
+
+    [Test]
+    procedure Render_CheckedCheckbox_EmitsFormCheckboxCheckTrue;
+
+    [Test]
+    procedure Render_UncheckedRadio_EmitsFormCheckboxRadioOff;
   end;
 
 implementation
@@ -300,6 +306,38 @@ begin
     LRtf := TWARtfDocumentRenderer.Render(LDocument);
 
     Assert.Contains(LRtf, 'Weird\{Font\}Name\\Here;');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentRendererTests.Render_CheckedCheckbox_EmitsFormCheckboxCheckTrue;
+var
+  LDocument: TWARichDocument;
+  LRtf: string;
+begin
+  LDocument := TWARichDocument.Create;
+  try
+    LDocument.AddParagraph.Runs.Add(TWARun.CreateCheckbox(True, False));
+    LRtf := TWARtfDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LRtf, 'FORMCHECKBOX _Check=true');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentRendererTests.Render_UncheckedRadio_EmitsFormCheckboxRadioOff;
+var
+  LDocument: TWARichDocument;
+  LRtf: string;
+begin
+  LDocument := TWARichDocument.Create;
+  try
+    LDocument.AddParagraph.Runs.Add(TWARun.CreateCheckbox(False, True));
+    LRtf := TWARtfDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LRtf, 'FORMCHECKBOX _Radio=off');
   finally
     LDocument.Free;
   end;

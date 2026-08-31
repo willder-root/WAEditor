@@ -38,6 +38,9 @@ type
 
     [Test]
     procedure HtmlToRtfToHtml_PreservesOrderedList;
+
+    [Test]
+    procedure RtfToHtmlToRtf_PreservesCheckboxAndRadioState;
   end;
 
 implementation
@@ -304,6 +307,46 @@ begin
   finally
     LOriginal.Free;
   end;
+end;
+
+procedure TWARichDocumentRoundTripTests.RtfToHtmlToRtf_PreservesCheckboxAndRadioState;
+var
+  LFromRtf, LFromHtml: TWARichDocument;
+  LHtml, LRtf2: string;
+  LParagraph: TWAParagraphBlock;
+begin
+  // Modeled on WPTools' own FORMCHECKBOX serialization: a checked
+  // checkbox and an unchecked radio button, each inline with real text.
+  LFromRtf := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 ' +
+    '\pard\ql {\field{\*\fldinst{FORMCHECKBOX _Check=true}}{\*\fldrslt{true}}} Um\par' +
+    '\pard\ql {\field{\*\fldinst{FORMCHECKBOX _Radio=off}}{\*\fldrslt{off}}} Dois\par' +
+    '}');
+  try
+    LHtml := TWAHtmlDocumentRenderer.Render(LFromRtf);
+  finally
+    LFromRtf.Free;
+  end;
+
+  LFromHtml := TWAHtmlDocumentParser.Parse(LHtml);
+  try
+    LParagraph := TWAParagraphBlock(LFromHtml.Blocks[0]);
+    Assert.IsTrue(LParagraph.Runs[0].IsCheckbox);
+    Assert.IsTrue(LParagraph.Runs[0].IsChecked);
+    Assert.IsFalse(LParagraph.Runs[0].IsRadio);
+
+    LParagraph := TWAParagraphBlock(LFromHtml.Blocks[1]);
+    Assert.IsTrue(LParagraph.Runs[0].IsCheckbox);
+    Assert.IsFalse(LParagraph.Runs[0].IsChecked);
+    Assert.IsTrue(LParagraph.Runs[0].IsRadio);
+
+    LRtf2 := TWARtfDocumentRenderer.Render(LFromHtml);
+  finally
+    LFromHtml.Free;
+  end;
+
+  Assert.Contains(LRtf2, 'FORMCHECKBOX _Check=true');
+  Assert.Contains(LRtf2, 'FORMCHECKBOX _Radio=off');
 end;
 
 initialization
