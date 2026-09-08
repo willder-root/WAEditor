@@ -388,6 +388,21 @@ begin
     if AHasParam then
       FPendingCellxValues.Add(AParam);
   end
+  else if AName = 'brdrw' then
+  begin
+    // \brdrw appears between \trowd and the row's \cellx values (e.g.
+    // \clbrdrl\brdrs\brdrw10...\cellx960), giving the cell border width
+    // in twips; only the first value found is kept, matching this
+    // model's single BorderWidth applying to the whole table.
+    if AHasParam and (FCurrentTable <> nil) and (FCurrentRow <> nil) and
+       (FCurrentCell = nil) then
+    begin
+      if AParam div 20 > 1 then
+        FCurrentTable.BorderWidth := AParam div 20
+      else
+        FCurrentTable.BorderWidth := 1;
+    end;
+  end
   else if AName = 'intbl' then
   begin
     if (FCurrentCell = nil) and (FCurrentRow <> nil) then

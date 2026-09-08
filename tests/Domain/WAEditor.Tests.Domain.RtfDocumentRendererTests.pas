@@ -56,6 +56,12 @@ type
 
     [Test]
     procedure Render_TableWithColumnWidths_EmitsCumulativeCellxPositions;
+
+    [Test]
+    procedure Render_TableWithBorderWidth_EmitsCellBorderControlWordsPerCell;
+
+    [Test]
+    procedure Render_TableWithZeroBorderWidth_EmitsNoCellBorderControlWords;
   end;
 
 implementation
@@ -356,7 +362,9 @@ begin
   // widths: 3495 then 3495+1005=4500, not 3495 then 1005.
   LDocument := TWARichDocument.Create;
   try
-    LTable := LDocument.AddTable(1, 2, 1);
+    // Zero border width keeps this assertion focused on \cellx cumulation
+    // alone; border control words are covered separately below.
+    LTable := LDocument.AddTable(1, 2, 0);
     LTable.ColumnWidths := [3495, 1005];
     LTable.Rows[0].Cells[0].AddRun('A', TWARunFormat.Plain);
     LTable.Rows[0].Cells[1].AddRun('B', TWARunFormat.Plain);
@@ -364,6 +372,50 @@ begin
     LRtf := TWARtfDocumentRenderer.Render(LDocument);
 
     Assert.Contains(LRtf, '\cellx3495\cellx4500');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentRendererTests.Render_TableWithBorderWidth_EmitsCellBorderControlWordsPerCell;
+var
+  LDocument: TWARichDocument;
+  LTable: TWATableBlock;
+  LRtf: string;
+begin
+  // RTF has no implicit table grid like HTML's <table border>: without
+  // \clbrdr*/\brdrs/\brdrw on every cell, readers such as WPTools show
+  // the table with no visible border lines at all.
+  LDocument := TWARichDocument.Create;
+  try
+    LTable := LDocument.AddTable(1, 2, 1);
+    LTable.Rows[0].Cells[0].AddRun('A', TWARunFormat.Plain);
+    LTable.Rows[0].Cells[1].AddRun('B', TWARunFormat.Plain);
+    LRtf := TWARtfDocumentRenderer.Render(LDocument);
+
+    Assert.AreEqual(2, CountOccurrences(LRtf, '\clbrdrl'));
+    Assert.AreEqual(2, CountOccurrences(LRtf, '\clbrdrt'));
+    Assert.AreEqual(2, CountOccurrences(LRtf, '\clbrdrr'));
+    Assert.AreEqual(2, CountOccurrences(LRtf, '\clbrdrb'));
+    Assert.Contains(LRtf, '\brdrs\brdrw20');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentRendererTests.Render_TableWithZeroBorderWidth_EmitsNoCellBorderControlWords;
+var
+  LDocument: TWARichDocument;
+  LTable: TWATableBlock;
+  LRtf: string;
+begin
+  LDocument := TWARichDocument.Create;
+  try
+    LTable := LDocument.AddTable(1, 1, 0);
+    LTable.Rows[0].Cells[0].AddRun('A', TWARunFormat.Plain);
+    LRtf := TWARtfDocumentRenderer.Render(LDocument);
+
+    Assert.IsFalse(LRtf.Contains('\clbrdr'));
   finally
     LDocument.Free;
   end;

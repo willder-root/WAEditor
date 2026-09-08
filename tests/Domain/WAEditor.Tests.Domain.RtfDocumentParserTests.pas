@@ -86,6 +86,15 @@ type
 
     [Test]
     procedure Parse_CellxPositions_DeriveColumnWidthsFromCumulativeDifferences;
+
+    [Test]
+    procedure Parse_CellBorderControlWords_SetTableBorderWidthFromTwips;
+
+    [Test]
+    procedure Parse_RealWorldWPToolsCellBorders_SetTableBorderWidth;
+
+    [Test]
+    procedure Parse_TableWithoutCellBorderControlWords_KeepsDefaultBorderWidth;
   end;
 
 implementation
@@ -542,6 +551,68 @@ begin
     Assert.AreEqual(2, Length(LTable.ColumnWidths));
     Assert.AreEqual(3495, LTable.ColumnWidths[0]);
     Assert.AreEqual(1005, LTable.ColumnWidths[1]);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_CellBorderControlWords_SetTableBorderWidthFromTwips;
+var
+  LDocument: TWARichDocument;
+  LTable: TWATableBlock;
+begin
+  // \brdrw is in twips; this project's renderer emits BorderWidth * 20,
+  // so 20 twips must come back as a BorderWidth of 1.
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 {' +
+    '\trowd\clbrdrl\brdrs\brdrw20\clbrdrt\brdrs\brdrw20\clbrdrr\brdrs\brdrw20\clbrdrb\brdrs\brdrw20\cellx2000' +
+    '\pard\intbl A\cell' +
+    '\row' +
+    '}}');
+  try
+    LTable := TWATableBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(1, LTable.BorderWidth);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_RealWorldWPToolsCellBorders_SetTableBorderWidth;
+var
+  LDocument: TWARichDocument;
+  LTable: TWATableBlock;
+begin
+  // Real WPTools output orders the sides differently (right/top/left/
+  // bottom) and uses a thinner \brdrw10 (0.5pt); a value below 20 twips
+  // still must produce a visible border rather than falling back to 0.
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 {' +
+    '\trowd\clbrdrr\brdrs\brdrw10\clbrdrt\brdrs\brdrw10\clbrdrl\brdrs\brdrw10\clbrdrb\brdrs\brdrw10\cellx2000' +
+    '\pard\intbl A\cell' +
+    '\row' +
+    '}}');
+  try
+    LTable := TWATableBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(1, LTable.BorderWidth);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_TableWithoutCellBorderControlWords_KeepsDefaultBorderWidth;
+var
+  LDocument: TWARichDocument;
+  LTable: TWATableBlock;
+begin
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 {' +
+    '\trowd\cellx2000' +
+    '\pard\intbl A\cell' +
+    '\row' +
+    '}}');
+  try
+    LTable := TWATableBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(1, LTable.BorderWidth);
   finally
     LDocument.Free;
   end;

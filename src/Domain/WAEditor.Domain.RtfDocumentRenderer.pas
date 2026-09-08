@@ -249,10 +249,23 @@ var
   LRun: TWARun;
   I: Integer;
   LCumulativeWidth: Integer;
+  LBorderWidthInTwips: Integer;
+  LCellBorders: string;
 begin
   LBuilder := TStringBuilder.Create;
   try
     LBuilder.Append('{').Append(sLineBreak);
+    // RTF has no implicit table grid the way HTML's <table border> does:
+    // without \clbrdr*/\brdrs/\brdrw control words on every cell, readers
+    // like WPTools render the table with no border lines at all, even
+    // though the outer HTML <table border="N"> attribute survived.
+    LBorderWidthInTwips := ATable.BorderWidth * 20;
+    if ATable.BorderWidth > 0 then
+      LCellBorders :=
+        Format('\clbrdrl\brdrs\brdrw%0:d\clbrdrt\brdrs\brdrw%0:d\clbrdrr\brdrs\brdrw%0:d\clbrdrb\brdrs\brdrw%0:d',
+          [LBorderWidthInTwips])
+    else
+      LCellBorders := '';
     for LRow in ATable.Rows do
     begin
       LBuilder.Append('\trowd');
@@ -266,12 +279,16 @@ begin
         for I := 0 to LRow.Cells.Count - 1 do
         begin
           Inc(LCumulativeWidth, ATable.ColumnWidths[I]);
+          LBuilder.Append(LCellBorders);
           LBuilder.AppendFormat('\cellx%d', [LCumulativeWidth]);
         end;
       end
       else
         for I := 1 to LRow.Cells.Count do
+        begin
+          LBuilder.Append(LCellBorders);
           LBuilder.AppendFormat('\cellx%d', [I * WA_TWIPS_PER_COLUMN]);
+        end;
       LBuilder.Append(sLineBreak);
       for LCell in LRow.Cells do
       begin
