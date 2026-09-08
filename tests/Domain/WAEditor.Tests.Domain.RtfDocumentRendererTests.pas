@@ -53,6 +53,9 @@ type
 
     [Test]
     procedure Render_UncheckedRadio_EmitsFormCheckboxRadioOff;
+
+    [Test]
+    procedure Render_TableWithColumnWidths_EmitsCumulativeCellxPositions;
   end;
 
 implementation
@@ -338,6 +341,29 @@ begin
     LRtf := TWARtfDocumentRenderer.Render(LDocument);
 
     Assert.Contains(LRtf, 'FORMCHECKBOX _Radio=off');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentRendererTests.Render_TableWithColumnWidths_EmitsCumulativeCellxPositions;
+var
+  LDocument: TWARichDocument;
+  LTable: TWATableBlock;
+  LRtf: string;
+begin
+  // \cellx values are cumulative right-edge positions, not per-column
+  // widths: 3495 then 3495+1005=4500, not 3495 then 1005.
+  LDocument := TWARichDocument.Create;
+  try
+    LTable := LDocument.AddTable(1, 2, 1);
+    LTable.ColumnWidths := [3495, 1005];
+    LTable.Rows[0].Cells[0].AddRun('A', TWARunFormat.Plain);
+    LTable.Rows[0].Cells[1].AddRun('B', TWARunFormat.Plain);
+
+    LRtf := TWARtfDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LRtf, '\cellx3495\cellx4500');
   finally
     LDocument.Free;
   end;

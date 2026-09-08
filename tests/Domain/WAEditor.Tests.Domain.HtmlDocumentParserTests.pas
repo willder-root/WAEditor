@@ -82,6 +82,15 @@ type
 
     [Test]
     procedure Parse_UncheckedInputRadio_ProducesUncheckedRadioRun;
+
+    [Test]
+    procedure Parse_ColgroupColWidths_ConvertToTwipsOnTable;
+
+    [Test]
+    procedure Parse_CellColwidthFallback_UsedWhenNoColgroupPresent;
+
+    [Test]
+    procedure Parse_ColStyleMinWidth_IsNotMistakenForWidth;
   end;
 
 implementation
@@ -422,6 +431,58 @@ begin
     Assert.IsTrue(LRun.IsCheckbox);
     Assert.IsFalse(LRun.IsChecked);
     Assert.IsTrue(LRun.IsRadio);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_ColgroupColWidths_ConvertToTwipsOnTable;
+var
+  LDocument: TWARichDocument;
+  LTable: TWATableBlock;
+begin
+  // 1px = 15 twips at the standard 96dpi CSS reference.
+  LDocument := TWAHtmlDocumentParser.Parse(
+    '<table><colgroup><col style="width: 233px;"><col style="width: 67px;">' +
+    '</colgroup><tr><td>A</td><td>B</td></tr></table>');
+  try
+    LTable := TWATableBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(2, Length(LTable.ColumnWidths));
+    Assert.AreEqual(3495, LTable.ColumnWidths[0]);
+    Assert.AreEqual(1005, LTable.ColumnWidths[1]);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_CellColwidthFallback_UsedWhenNoColgroupPresent;
+var
+  LDocument: TWARichDocument;
+  LTable: TWATableBlock;
+begin
+  LDocument := TWAHtmlDocumentParser.Parse(
+    '<table><tr><td colwidth="233">A</td><td colwidth="67">B</td></tr></table>');
+  try
+    LTable := TWATableBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(2, Length(LTable.ColumnWidths));
+    Assert.AreEqual(3495, LTable.ColumnWidths[0]);
+    Assert.AreEqual(1005, LTable.ColumnWidths[1]);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_ColStyleMinWidth_IsNotMistakenForWidth;
+var
+  LDocument: TWARichDocument;
+  LTable: TWATableBlock;
+begin
+  // "min-width" must not be matched by a bare search for "width".
+  LDocument := TWAHtmlDocumentParser.Parse(
+    '<table><colgroup><col style="min-width: 25px;"></colgroup><tr><td>A</td></tr></table>');
+  try
+    LTable := TWATableBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(0, Length(LTable.ColumnWidths));
   finally
     LDocument.Free;
   end;

@@ -83,6 +83,9 @@ type
 
     [Test]
     procedure Parse_TextImmediatelyAfterCheckboxField_IsNotMergedIntoCheckboxRun;
+
+    [Test]
+    procedure Parse_CellxPositions_DeriveColumnWidthsFromCumulativeDifferences;
   end;
 
 implementation
@@ -514,6 +517,31 @@ begin
     Assert.AreEqual('', LParagraph.Runs[0].Text);
     Assert.IsFalse(LParagraph.Runs[1].IsCheckbox);
     Assert.AreEqual('ABC', LParagraph.Runs[1].Text);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_CellxPositions_DeriveColumnWidthsFromCumulativeDifferences;
+var
+  LDocument: TWARichDocument;
+  LTable: TWATableBlock;
+begin
+  // \cellx values are cumulative right-edge positions, not per-column
+  // widths: column widths must come from consecutive differences
+  // (3495, then 4500-3495=1005), not the raw \cellx values themselves.
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 {' +
+    '\trowd\cellx3495\cellx4500' +
+    '\pard\intbl A\cell' +
+    '\pard\intbl B\cell' +
+    '\row' +
+    '}}');
+  try
+    LTable := TWATableBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(2, Length(LTable.ColumnWidths));
+    Assert.AreEqual(3495, LTable.ColumnWidths[0]);
+    Assert.AreEqual(1005, LTable.ColumnWidths[1]);
   finally
     LDocument.Free;
   end;
