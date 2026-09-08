@@ -90,6 +90,11 @@ type
   TWATableBlock = class(TWABlock)
   public
     BorderWidth: Integer;
+    // Column widths in twips (RTF's native unit, 1440 per inch), one
+    // entry per column, applying uniformly to every row. An empty
+    // array means no explicit widths were recorded, and renderers fall
+    // back to distributing columns evenly.
+    ColumnWidths: TArray<Integer>;
     Rows: TObjectList<TWATableRow>;
     constructor Create(ABorderWidth: Integer = 1);
     destructor Destroy; override;
