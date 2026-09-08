@@ -195,6 +195,63 @@ begin
   end;
 end;
 
+function FindStylePropertyPos(const ALowerStyle, APropName: string): Integer;
+// Finds APropName as an actual property name (not, e.g., "width" inside
+// "min-width"): the match must not be immediately preceded by a letter
+// or hyphen.
+var
+  LPos, LBefore: Integer;
+begin
+  Result := 0;
+  LPos := Pos(APropName, ALowerStyle);
+  while LPos > 0 do
+  begin
+    LBefore := LPos - 1;
+    if (LBefore < 1) or not CharInSet(ALowerStyle[LBefore], ['a'..'z', '-']) then
+      Exit(LPos);
+    LPos := PosEx(APropName, ALowerStyle, LPos + 1);
+  end;
+end;
+
+function ExtractColumnWidthInTwips(const AAttributes, AAttrName: string): Integer;
+// A live WYSIWYG surface records a <col>'s width as a bare "width"
+// attribute or as "width:Npx" in its style, and a <td>'s width as a
+// bare "colwidth" attribute. Reads whichever applies and converts px
+// to twips (RTF's native unit) at the standard 96dpi reference
+// (1px = 15 twips). Returns 0 if no usable width was found.
+var
+  LStyle, LLowerStyle, LValueText, LDigits: string;
+  LWidthPos, LColonPos, LSemiPos, I: Integer;
+begin
+  Result := 0;
+  LValueText := Trim(ExtractAttribute(AAttributes, AAttrName));
+  if (LValueText = '') and (LowerCase(AAttrName) = 'width') then
+  begin
+    LStyle := ExtractAttribute(AAttributes, 'style');
+    LLowerStyle := LowerCase(LStyle);
+    LWidthPos := FindStylePropertyPos(LLowerStyle, 'width');
+    if LWidthPos = 0 then
+      Exit;
+    LColonPos := PosEx(':', LStyle, LWidthPos);
+    if LColonPos = 0 then
+      Exit;
+    LSemiPos := PosEx(';', LStyle, LColonPos);
+    if LSemiPos = 0 then
+      LSemiPos := Length(LStyle) + 1;
+    LValueText := Trim(Copy(LStyle, LColonPos + 1, LSemiPos - LColonPos - 1));
+  end;
+
+  LDigits := '';
+  I := 1;
+  while (I <= Length(LValueText)) and CharInSet(LValueText[I], ['0'..'9']) do
+  begin
+    LDigits := LDigits + LValueText[I];
+    Inc(I);
+  end;
+  if LDigits <> '' then
+    Result := StrToIntDef(LDigits, 0) * 15; // px -> twips at 96dpi
+end;
+
 function ParseStyleFormat(const AStyle: string; ABase: TWARunFormat): TWARunFormat;
 var
   LParts: TArray<string>;
@@ -382,6 +439,7 @@ var
   LSize: Integer;
   LBorder: Integer;
   LInputType: string;
+  LColumnWidth: Integer;
 begin
   if (ATagName = 'b') or (ATagName = 'strong') then
   begin
@@ -449,6 +507,18 @@ begin
     FDocument.Blocks.Add(FCurrentTable);
     FCurrentParagraph := nil;
   end
+  else if ATagName = 'col' then
+  begin
+    if FCurrentTable <> nil then
+    begin
+      LColumnWidth := ExtractColumnWidthInTwips(AAttributes, 'width');
+      if LColumnWidth > 0 then
+      begin
+        SetLength(FCurrentTable.ColumnWidths, Length(FCurrentTable.ColumnWidths) + 1);
+        FCurrentTable.ColumnWidths[High(FCurrentTable.ColumnWidths)] := LColumnWidth;
+      end;
+    end;
+  end
   else if ATagName = 'tr' then
   begin
     if FCurrentTable <> nil then
@@ -457,7 +527,21 @@ begin
   else if (ATagName = 'td') or (ATagName = 'th') then
   begin
     if FCurrentRow <> nil then
+    begin
+      // <colgroup><col> (handled above) is preferred; "colwidth" on the
+      // cell itself (MSHTML's own per-cell width attribute) is only a
+      // fallback for whichever columns colgroup didn't already cover.
+      if (FCurrentTable <> nil) and (FCurrentRow.Cells.Count >= Length(FCurrentTable.ColumnWidths)) then
+      begin
+        LColumnWidth := ExtractColumnWidthInTwips(AAttributes, 'colwidth');
+        if LColumnWidth > 0 then
+        begin
+          SetLength(FCurrentTable.ColumnWidths, FCurrentRow.Cells.Count + 1);
+          FCurrentTable.ColumnWidths[FCurrentRow.Cells.Count] := LColumnWidth;
+        end;
+      end;
       FCurrentCell := FCurrentRow.AddCell;
+    end;
   end
   else if (ATagName = 'ul') or (ATagName = 'ol') then
   begin

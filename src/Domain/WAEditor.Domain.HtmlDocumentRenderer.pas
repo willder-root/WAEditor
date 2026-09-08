@@ -109,16 +109,37 @@ var
   LRow: TWATableRow;
   LCell: TWATableCell;
   LRun: TWARun;
+  I: Integer;
+  LColumnWidthPx: Integer;
 begin
   LBuilder := TStringBuilder.Create;
   try
     LBuilder.AppendFormat('<table border="%d">', [ATable.BorderWidth]);
+    // Twips -> px at the standard 96dpi reference (1px = 15 twips),
+    // written back out as <colgroup><col> (and each <td>'s colwidth,
+    // matching what a live WYSIWYG surface itself produces) so column
+    // widths survive an HTML round trip instead of collapsing back to
+    // whatever the host's default auto-layout picks.
+    if Length(ATable.ColumnWidths) > 0 then
+    begin
+      LBuilder.Append('<colgroup>');
+      for I := 0 to High(ATable.ColumnWidths) do
+        LBuilder.AppendFormat('<col style="width:%dpx;">', [ATable.ColumnWidths[I] div 15]);
+      LBuilder.Append('</colgroup>');
+    end;
     for LRow in ATable.Rows do
     begin
       LBuilder.Append('<tr>');
-      for LCell in LRow.Cells do
+      for I := 0 to LRow.Cells.Count - 1 do
       begin
-        LBuilder.Append('<td>');
+        LCell := LRow.Cells[I];
+        if (I < Length(ATable.ColumnWidths)) and (ATable.ColumnWidths[I] > 0) then
+        begin
+          LColumnWidthPx := ATable.ColumnWidths[I] div 15;
+          LBuilder.AppendFormat('<td colwidth="%d">', [LColumnWidthPx]);
+        end
+        else
+          LBuilder.Append('<td>');
         for LRun in LCell.Runs do
           LBuilder.Append(RenderRun(LRun));
         if LCell.Runs.Count = 0 then
