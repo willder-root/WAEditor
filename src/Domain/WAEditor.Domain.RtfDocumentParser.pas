@@ -210,6 +210,7 @@ begin
   if FCurrentCell <> nil then
   begin
     if (FCurrentCell.Runs.Count > 0) and (not FCurrentCell.Runs.Last.IsLineBreak) and
+       (not FCurrentCell.Runs.Last.IsCheckbox) and
        FCurrentCell.Runs.Last.Format.EqualsFormat(FCurrentFormat) then
       FCurrentCell.Runs.Last.Text := FCurrentCell.Runs.Last.Text + AChar
     else
@@ -218,6 +219,7 @@ begin
   else if FCurrentListItem <> nil then
   begin
     if (FCurrentListItem.Runs.Count > 0) and (not FCurrentListItem.Runs.Last.IsLineBreak) and
+       (not FCurrentListItem.Runs.Last.IsCheckbox) and
        FCurrentListItem.Runs.Last.Format.EqualsFormat(FCurrentFormat) then
       FCurrentListItem.Runs.Last.Text := FCurrentListItem.Runs.Last.Text + AChar
     else
@@ -227,6 +229,7 @@ begin
   begin
     EnsureParagraph;
     if (FCurrentParagraph.Runs.Count > 0) and (not FCurrentParagraph.Runs.Last.IsLineBreak) and
+       (not FCurrentParagraph.Runs.Last.IsCheckbox) and
        FCurrentParagraph.Runs.Last.Format.EqualsFormat(FCurrentFormat) then
       FCurrentParagraph.Runs.Last.Text := FCurrentParagraph.Runs.Last.Text + AChar
     else
