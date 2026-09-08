@@ -80,6 +80,9 @@ type
 
     [Test]
     procedure Parse_FormCheckboxField_RadioOff_ProducesUncheckedRadioRun;
+
+    [Test]
+    procedure Parse_TextImmediatelyAfterCheckboxField_IsNotMergedIntoCheckboxRun;
   end;
 
 implementation
@@ -485,6 +488,32 @@ begin
     Assert.IsTrue(LRun.IsCheckbox);
     Assert.IsFalse(LRun.IsChecked);
     Assert.IsTrue(LRun.IsRadio);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_TextImmediatelyAfterCheckboxField_IsNotMergedIntoCheckboxRun;
+var
+  LDocument: TWARichDocument;
+  LParagraph: TWAParagraphBlock;
+begin
+  // AppendChar's "merge into the last run if the format matches"
+  // optimization did not check IsCheckbox, so plain text typed right
+  // after a FORMCHECKBOX field silently got absorbed into that
+  // (textless) checkbox run's Text property instead of starting its
+  // own run -- the run stayed IsCheckbox=True and the text became
+  // invisible to anything that branched on that flag.
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 \pard\ql ' +
+    '{\field{\*\fldinst{FORMCHECKBOX _Check=false}}{\*\fldrslt{false}}}ABC\par}');
+  try
+    LParagraph := TWAParagraphBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(2, LParagraph.Runs.Count);
+    Assert.IsTrue(LParagraph.Runs[0].IsCheckbox);
+    Assert.AreEqual('', LParagraph.Runs[0].Text);
+    Assert.IsFalse(LParagraph.Runs[1].IsCheckbox);
+    Assert.AreEqual('ABC', LParagraph.Runs[1].Text);
   finally
     LDocument.Free;
   end;
