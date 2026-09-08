@@ -248,6 +248,7 @@ var
   LCell: TWATableCell;
   LRun: TWARun;
   I: Integer;
+  LCumulativeWidth: Integer;
 begin
   LBuilder := TStringBuilder.Create;
   try
@@ -255,8 +256,22 @@ begin
     for LRow in ATable.Rows do
     begin
       LBuilder.Append('\trowd');
-      for I := 1 to LRow.Cells.Count do
-        LBuilder.AppendFormat('\cellx%d', [I * WA_TWIPS_PER_COLUMN]);
+      // \cellx values are cumulative right-edge positions in twips, not
+      // per-column widths, so they must be summed rather than just
+      // multiplying the column index by a fixed width once real widths
+      // are known.
+      if Length(ATable.ColumnWidths) = LRow.Cells.Count then
+      begin
+        LCumulativeWidth := 0;
+        for I := 0 to LRow.Cells.Count - 1 do
+        begin
+          Inc(LCumulativeWidth, ATable.ColumnWidths[I]);
+          LBuilder.AppendFormat('\cellx%d', [LCumulativeWidth]);
+        end;
+      end
+      else
+        for I := 1 to LRow.Cells.Count do
+          LBuilder.AppendFormat('\cellx%d', [I * WA_TWIPS_PER_COLUMN]);
       LBuilder.Append(sLineBreak);
       for LCell in LRow.Cells do
       begin

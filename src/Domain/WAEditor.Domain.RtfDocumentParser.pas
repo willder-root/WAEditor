@@ -46,6 +46,11 @@ type
     FCurrentTable: TWATableBlock;
     FCurrentRow: TWATableRow;
     FCurrentCell: TWATableCell;
+    // \cellx values accumulated for the row currently being read; each
+    // is a cumulative right-edge position in twips, reset at \trowd and
+    // turned into per-column widths (via consecutive differences) on
+    // \row, once, from the table's first row.
+    FPendingCellxValues: TList<Integer>;
     FCurrentList: TWAListBlock;
     FCurrentListItem: TWAListItem;
     // A list item is rendered as \pard\fi-360\li720 followed by a literal
@@ -105,12 +110,14 @@ begin
   FDocument := TWARichDocument.Create;
   FFontTable := TDictionary<Integer, string>.Create;
   FGroupStack := TStack<TWARtfGroupSnapshot>.Create;
+  FPendingCellxValues := TList<Integer>.Create;
   FCurrentFormat := TWARunFormat.Plain;
   FCurrentAlignment := taLeftAlign;
 end;
 
 destructor TWARtfParserState.Destroy;
 begin
+  FPendingCellxValues.Free;
   FGroupStack.Free;
   FFontTable.Free;
   inherited Destroy;
@@ -267,6 +274,7 @@ procedure TWARtfParserState.HandleControlWord(const AName: string; AHasParam: Bo
   AParam: Integer);
 var
   LFontName: string;
+  LCellxIndex: Integer;
 begin
   if AName = 'par' then
   begin
@@ -370,7 +378,15 @@ begin
   else if AName = 'trowd' then
   begin
     if FCurrentTable <> nil then
+    begin
       FCurrentRow := FCurrentTable.AddRow;
+      FPendingCellxValues.Clear;
+    end;
+  end
+  else if AName = 'cellx' then
+  begin
+    if AHasParam then
+      FPendingCellxValues.Add(AParam);
   end
   else if AName = 'intbl' then
   begin
@@ -380,7 +396,23 @@ begin
   else if AName = 'cell' then
     FCurrentCell := nil
   else if AName = 'row' then
-    FCurrentRow := nil
+  begin
+    // \cellx values are cumulative right-edge positions in twips; only
+    // the first row's layout is kept, matching this model's single
+    // ColumnWidths array applying to the whole table.
+    if (FCurrentTable <> nil) and (Length(FCurrentTable.ColumnWidths) = 0) and
+       (FPendingCellxValues.Count > 0) then
+    begin
+      SetLength(FCurrentTable.ColumnWidths, FPendingCellxValues.Count);
+      for LCellxIndex := 0 to FPendingCellxValues.Count - 1 do
+        if LCellxIndex = 0 then
+          FCurrentTable.ColumnWidths[0] := FPendingCellxValues[0]
+        else
+          FCurrentTable.ColumnWidths[LCellxIndex] :=
+            FPendingCellxValues[LCellxIndex] - FPendingCellxValues[LCellxIndex - 1];
+    end;
+    FCurrentRow := nil;
+  end
   else if AName = 'line' then
     AppendLineBreak;
   // Any other control word (\rtf, \ansi, \ansicpg, \deff, \uc, \viewkind,
