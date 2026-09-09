@@ -101,6 +101,12 @@ type
 
     [Test]
     procedure Parse_SubControlWord_SetsSubscriptOnRunFormat;
+
+    [Test]
+    procedure Parse_PlainRunGroupStartingWithSpace_PreservesLeadingSpace;
+
+    [Test]
+    procedure Parse_CascadeOfSuperscriptAndSubscriptRuns_PreservesSurroundingSpaces;
   end;
 
 implementation
@@ -657,6 +663,48 @@ begin
     Assert.IsTrue(LParagraph.Runs[1].Format.Subscript);
     Assert.IsFalse(LParagraph.Runs[1].Format.Superscript);
     Assert.IsFalse(LParagraph.Runs[0].Format.Subscript);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_PlainRunGroupStartingWithSpace_PreservesLeadingSpace;
+var
+  LDocument: TWARichDocument;
+  LParagraph: TWAParagraphBlock;
+begin
+  // A plain-text run that happens to start with a space (e.g. right
+  // after a superscript/subscript span closes) is still just an
+  // ordinary nested {...} group. The group dispatcher must not treat
+  // its leading space as cosmetic whitespace ahead of a destination
+  // keyword (as it would for "{ \fonttbl ...}") and discard it.
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 \pard {\super 2+}{ and CO}\par}');
+  try
+    LParagraph := TWAParagraphBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(2, LParagraph.Runs.Count);
+    Assert.AreEqual('2+', LParagraph.Runs[0].Text);
+    Assert.AreEqual(' and CO', LParagraph.Runs[1].Text);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_CascadeOfSuperscriptAndSubscriptRuns_PreservesSurroundingSpaces;
+var
+  LDocument: TWARichDocument;
+  LParagraph: TWAParagraphBlock;
+  LText: string;
+  I: Integer;
+begin
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 \pard {H}{\sub 2}{O}{\super 2+}{ and CO}{\sub 2}{ plus x}{\super 2}{y}{\super 3}\par}');
+  try
+    LParagraph := TWAParagraphBlock(LDocument.Blocks[0]);
+    LText := '';
+    for I := 0 to LParagraph.Runs.Count - 1 do
+      LText := LText + LParagraph.Runs[I].Text;
+    Assert.AreEqual('H2O2+ and CO2 plus x2y3', LText);
   finally
     LDocument.Free;
   end;

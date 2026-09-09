@@ -811,7 +811,15 @@ begin
           begin
             LKeyword := PeekKeywordAfterWhitespace;
             Inc(FPos); // consume '{'
-            SkipWhitespace; // skip any whitespace before the keyword
+            // Only skip whitespace ahead of a recognized destination
+            // keyword (e.g. "{ \fonttbl ...}"). An ordinary nested run
+            // group ("{ and CO}", produced whenever a plain-text run
+            // happens to start with a space, e.g. right after a
+            // superscript/subscript span closes) falls through to the
+            // plain ParseGroup branch below, where a leading space is
+            // real text content and must be preserved, not discarded.
+            if LKeyword <> '' then
+              SkipWhitespace;
             if LKeyword = 'fonttbl' then
               ParseFontTableGroup
             else if LKeyword = 'trowd' then
