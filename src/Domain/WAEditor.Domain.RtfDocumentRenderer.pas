@@ -203,6 +203,10 @@ begin
     LControlWords := LControlWords + '\i';
   if ARun.Format.Underline then
     LControlWords := LControlWords + '\ul';
+  if ARun.Format.Superscript then
+    LControlWords := LControlWords + '\super'
+  else if ARun.Format.Subscript then
+    LControlWords := LControlWords + '\sub';
 
   if LControlWords <> '' then
     LControlWords := LControlWords + ' '; // delimiter, consumed by the reader and not part of the text

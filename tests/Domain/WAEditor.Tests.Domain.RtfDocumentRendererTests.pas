@@ -62,6 +62,12 @@ type
 
     [Test]
     procedure Render_TableWithZeroBorderWidth_EmitsNoCellBorderControlWords;
+
+    [Test]
+    procedure Render_SuperscriptRun_EmitsSuperControlWord;
+
+    [Test]
+    procedure Render_SubscriptRun_EmitsSubControlWord;
   end;
 
 implementation
@@ -416,6 +422,40 @@ begin
     LRtf := TWARtfDocumentRenderer.Render(LDocument);
 
     Assert.IsFalse(LRtf.Contains('\clbrdr'));
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentRendererTests.Render_SuperscriptRun_EmitsSuperControlWord;
+var
+  LDocument: TWARichDocument;
+  LRtf: string;
+begin
+  LDocument := TWARichDocument.Create;
+  try
+    LDocument.AddParagraph.AddRun('11', TWARunFormat.Create(False, False, False, '', 0, True, False));
+    LRtf := TWARtfDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LRtf, '\super');
+    Assert.IsFalse(LRtf.Contains('\sub '));
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentRendererTests.Render_SubscriptRun_EmitsSubControlWord;
+var
+  LDocument: TWARichDocument;
+  LRtf: string;
+begin
+  LDocument := TWARichDocument.Create;
+  try
+    LDocument.AddParagraph.AddRun('22', TWARunFormat.Create(False, False, False, '', 0, False, True));
+    LRtf := TWARtfDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LRtf, '\sub ');
+    Assert.IsFalse(LRtf.Contains('\super'));
   finally
     LDocument.Free;
   end;

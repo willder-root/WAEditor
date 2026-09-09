@@ -91,6 +91,15 @@ type
 
     [Test]
     procedure Parse_ColStyleMinWidth_IsNotMistakenForWidth;
+
+    [Test]
+    procedure Parse_SupTag_SetsSuperscriptOnRunFormat;
+
+    [Test]
+    procedure Parse_SubTag_SetsSubscriptOnRunFormat;
+
+    [Test]
+    procedure Parse_TextOutsideSupSub_IsNotSuperscriptOrSubscript;
   end;
 
 implementation
@@ -483,6 +492,54 @@ begin
   try
     LTable := TWATableBlock(LDocument.Blocks[0]);
     Assert.AreEqual(0, Length(LTable.ColumnWidths));
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_SupTag_SetsSuperscriptOnRunFormat;
+var
+  LDocument: TWARichDocument;
+  LRun: TWARun;
+begin
+  LDocument := TWAHtmlDocumentParser.Parse('<p>sergio<sup>11</sup></p>');
+  try
+    LRun := TWAParagraphBlock(LDocument.Blocks[0]).Runs[1];
+    Assert.AreEqual('11', LRun.Text);
+    Assert.IsTrue(LRun.Format.Superscript);
+    Assert.IsFalse(LRun.Format.Subscript);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_SubTag_SetsSubscriptOnRunFormat;
+var
+  LDocument: TWARichDocument;
+  LRun: TWARun;
+begin
+  LDocument := TWAHtmlDocumentParser.Parse('<p>sergio<sub>22</sub></p>');
+  try
+    LRun := TWAParagraphBlock(LDocument.Blocks[0]).Runs[1];
+    Assert.AreEqual('22', LRun.Text);
+    Assert.IsTrue(LRun.Format.Subscript);
+    Assert.IsFalse(LRun.Format.Superscript);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_TextOutsideSupSub_IsNotSuperscriptOrSubscript;
+var
+  LDocument: TWARichDocument;
+  LRun: TWARun;
+begin
+  LDocument := TWAHtmlDocumentParser.Parse('<p>sergio<sup>11</sup></p>');
+  try
+    LRun := TWAParagraphBlock(LDocument.Blocks[0]).Runs[0];
+    Assert.AreEqual('sergio', LRun.Text);
+    Assert.IsFalse(LRun.Format.Superscript);
+    Assert.IsFalse(LRun.Format.Subscript);
   finally
     LDocument.Free;
   end;

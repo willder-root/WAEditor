@@ -365,6 +365,21 @@ begin
     FCurrentFormat.Underline := (not AHasParam) or (AParam <> 0)
   else if AName = 'ulnone' then
     FCurrentFormat.Underline := False
+  else if AName = 'super' then
+  begin
+    FCurrentFormat.Superscript := True;
+    FCurrentFormat.Subscript := False;
+  end
+  else if AName = 'sub' then
+  begin
+    FCurrentFormat.Subscript := True;
+    FCurrentFormat.Superscript := False;
+  end
+  else if AName = 'nosupersub' then
+  begin
+    FCurrentFormat.Superscript := False;
+    FCurrentFormat.Subscript := False;
+  end
   else if AName = 'fs' then
   begin
     if AHasParam then

@@ -95,6 +95,12 @@ type
 
     [Test]
     procedure Parse_TableWithoutCellBorderControlWords_KeepsDefaultBorderWidth;
+
+    [Test]
+    procedure Parse_SuperControlWord_SetsSuperscriptOnRunFormat;
+
+    [Test]
+    procedure Parse_SubControlWord_SetsSubscriptOnRunFormat;
   end;
 
 implementation
@@ -613,6 +619,44 @@ begin
   try
     LTable := TWATableBlock(LDocument.Blocks[0]);
     Assert.AreEqual(1, LTable.BorderWidth);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_SuperControlWord_SetsSuperscriptOnRunFormat;
+var
+  LDocument: TWARichDocument;
+  LParagraph: TWAParagraphBlock;
+begin
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 \pard sergio{\super 11}\par}');
+  try
+    LParagraph := TWAParagraphBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(2, LParagraph.Runs.Count);
+    Assert.AreEqual('11', LParagraph.Runs[1].Text);
+    Assert.IsTrue(LParagraph.Runs[1].Format.Superscript);
+    Assert.IsFalse(LParagraph.Runs[1].Format.Subscript);
+    Assert.IsFalse(LParagraph.Runs[0].Format.Superscript);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_SubControlWord_SetsSubscriptOnRunFormat;
+var
+  LDocument: TWARichDocument;
+  LParagraph: TWAParagraphBlock;
+begin
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 \pard sergio{\sub 22}\par}');
+  try
+    LParagraph := TWAParagraphBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(2, LParagraph.Runs.Count);
+    Assert.AreEqual('22', LParagraph.Runs[1].Text);
+    Assert.IsTrue(LParagraph.Runs[1].Format.Subscript);
+    Assert.IsFalse(LParagraph.Runs[1].Format.Superscript);
+    Assert.IsFalse(LParagraph.Runs[0].Format.Subscript);
   finally
     LDocument.Free;
   end;

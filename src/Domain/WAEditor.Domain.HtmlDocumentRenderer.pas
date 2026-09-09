@@ -55,6 +55,10 @@ begin
     Result := '<i>' + Result + '</i>';
   if ARun.Format.Bold then
     Result := '<b>' + Result + '</b>';
+  if ARun.Format.Superscript then
+    Result := '<sup>' + Result + '</sup>'
+  else if ARun.Format.Subscript then
+    Result := '<sub>' + Result + '</sub>';
 
   LStyle := '';
   if ARun.Format.FontName <> '' then

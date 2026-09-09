@@ -47,6 +47,12 @@ type
 
     [Test]
     procedure Render_UncheckedRadioRun_EmitsUncheckedInputRadio;
+
+    [Test]
+    procedure Render_SuperscriptRun_WrapsTextInSupTag;
+
+    [Test]
+    procedure Render_SubscriptRun_WrapsTextInSubTag;
   end;
 
 implementation
@@ -279,6 +285,38 @@ begin
 
     Assert.Contains(LHtml, '<input type="radio">');
     Assert.IsFalse(LHtml.Contains('checked'));
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentRendererTests.Render_SuperscriptRun_WrapsTextInSupTag;
+var
+  LDocument: TWARichDocument;
+  LHtml: string;
+begin
+  LDocument := TWARichDocument.Create;
+  try
+    LDocument.AddParagraph.AddRun('11', TWARunFormat.Create(False, False, False, '', 0, True, False));
+    LHtml := TWAHtmlDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LHtml, '<sup>11</sup>');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentRendererTests.Render_SubscriptRun_WrapsTextInSubTag;
+var
+  LDocument: TWARichDocument;
+  LHtml: string;
+begin
+  LDocument := TWARichDocument.Create;
+  try
+    LDocument.AddParagraph.AddRun('22', TWARunFormat.Create(False, False, False, '', 0, False, True));
+    LHtml := TWAHtmlDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LHtml, '<sub>22</sub>');
   finally
     LDocument.Free;
   end;

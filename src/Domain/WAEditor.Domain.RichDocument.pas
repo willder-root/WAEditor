@@ -26,8 +26,13 @@ type
     Underline: Boolean;
     FontName: string;
     FontSizeInPoints: Integer;
+    // Mutually exclusive, matching RTF's \super/\sub (a run cannot be
+    // both at once); HTML's <sup>/<sub> are modeled the same way.
+    Superscript: Boolean;
+    Subscript: Boolean;
     class function Create(ABold, AItalic, AUnderline: Boolean;
-      const AFontName: string; AFontSizeInPoints: Integer): TWARunFormat; static;
+      const AFontName: string; AFontSizeInPoints: Integer;
+      ASuperscript: Boolean = False; ASubscript: Boolean = False): TWARunFormat; static;
     class function Plain: TWARunFormat; static;
     function EqualsFormat(const AOther: TWARunFormat): Boolean;
   end;
@@ -135,13 +140,16 @@ implementation
 { TWARunFormat }
 
 class function TWARunFormat.Create(ABold, AItalic, AUnderline: Boolean;
-  const AFontName: string; AFontSizeInPoints: Integer): TWARunFormat;
+  const AFontName: string; AFontSizeInPoints: Integer;
+  ASuperscript: Boolean = False; ASubscript: Boolean = False): TWARunFormat;
 begin
   Result.Bold := ABold;
   Result.Italic := AItalic;
   Result.Underline := AUnderline;
   Result.FontName := AFontName;
   Result.FontSizeInPoints := AFontSizeInPoints;
+  Result.Superscript := ASuperscript;
+  Result.Subscript := ASubscript;
 end;
 
 class function TWARunFormat.Plain: TWARunFormat;
@@ -153,7 +161,8 @@ function TWARunFormat.EqualsFormat(const AOther: TWARunFormat): Boolean;
 begin
   Result :=
     (Bold = AOther.Bold) and (Italic = AOther.Italic) and (Underline = AOther.Underline) and
-    (FontName = AOther.FontName) and (FontSizeInPoints = AOther.FontSizeInPoints);
+    (FontName = AOther.FontName) and (FontSizeInPoints = AOther.FontSizeInPoints) and
+    (Superscript = AOther.Superscript) and (Subscript = AOther.Subscript);
 end;
 
 { TWARun }

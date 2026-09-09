@@ -459,6 +459,20 @@ begin
     LFormat.Underline := True;
     FFormatStack.Push(LFormat);
   end
+  else if ATagName = 'sup' then
+  begin
+    LFormat := CurrentFormat;
+    LFormat.Superscript := True;
+    LFormat.Subscript := False;
+    FFormatStack.Push(LFormat);
+  end
+  else if ATagName = 'sub' then
+  begin
+    LFormat := CurrentFormat;
+    LFormat.Subscript := True;
+    LFormat.Superscript := False;
+    FFormatStack.Push(LFormat);
+  end
   else if ATagName = 'font' then
   begin
     LFormat := CurrentFormat;
@@ -561,7 +575,8 @@ end;
 procedure TWAHtmlParserState.HandleCloseTag(const ATagName: string);
 begin
   if (ATagName = 'b') or (ATagName = 'strong') or (ATagName = 'i') or (ATagName = 'em') or
-     (ATagName = 'u') or (ATagName = 'font') or (ATagName = 'span') then
+     (ATagName = 'u') or (ATagName = 'font') or (ATagName = 'span') or
+     (ATagName = 'sup') or (ATagName = 'sub') then
   begin
     if FFormatStack.Count > 1 then
       FFormatStack.Pop;
