@@ -107,6 +107,12 @@ type
 
     [Test]
     procedure Parse_CascadeOfSuperscriptAndSubscriptRuns_PreservesSurroundingSpaces;
+
+    [Test]
+    procedure Parse_FormCheckboxFieldInsideTableCell_ProducesCheckboxRunInCell;
+
+    [Test]
+    procedure Parse_FormCheckboxRadioInsideTableCell_ProducesRadioRunInCell;
   end;
 
 implementation
@@ -705,6 +711,62 @@ begin
     for I := 0 to LParagraph.Runs.Count - 1 do
       LText := LText + LParagraph.Runs[I].Text;
     Assert.AreEqual('H2O2+ and CO2 plus x2y3', LText);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_FormCheckboxFieldInsideTableCell_ProducesCheckboxRunInCell;
+var
+  LDocument: TWARichDocument;
+  LTable: TWATableBlock;
+  LCell: TWATableCell;
+begin
+  // ParseTableGroup used to dispatch every nested "{" straight into
+  // plain ParseGroup without checking for a recognized destination
+  // keyword first, so a {\field{\*\fldinst ...}{\*\fldrslt ...}}
+  // checkbox inside a cell fell into ParseGroup's own nested-group
+  // handling, which treated the \*-marked \fldinst/\fldrslt groups as
+  // generic ignorable destinations and discarded the whole field.
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 {' +
+    '\trowd\cellx2000' +
+    '\pard\intbl {\field{\*\fldinst{FORMCHECKBOX _Check=true}}{\*\fldrslt{true}}}{texto}\cell' +
+    '\row' +
+    '}}');
+  try
+    LTable := TWATableBlock(LDocument.Blocks[0]);
+    LCell := LTable.Rows[0].Cells[0];
+    Assert.AreEqual(2, LCell.Runs.Count);
+    Assert.IsTrue(LCell.Runs[0].IsCheckbox);
+    Assert.IsTrue(LCell.Runs[0].IsChecked);
+    Assert.IsFalse(LCell.Runs[0].IsRadio);
+    Assert.AreEqual('texto', LCell.Runs[1].Text);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_FormCheckboxRadioInsideTableCell_ProducesRadioRunInCell;
+var
+  LDocument: TWARichDocument;
+  LTable: TWATableBlock;
+  LCell: TWATableCell;
+begin
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 {' +
+    '\trowd\cellx2000' +
+    '\pard\intbl {\field{\*\fldinst{FORMCHECKBOX _Radio=on}}{\*\fldrslt{on}}}{radio}\cell' +
+    '\row' +
+    '}}');
+  try
+    LTable := TWATableBlock(LDocument.Blocks[0]);
+    LCell := LTable.Rows[0].Cells[0];
+    Assert.AreEqual(2, LCell.Runs.Count);
+    Assert.IsTrue(LCell.Runs[0].IsCheckbox);
+    Assert.IsTrue(LCell.Runs[0].IsRadio);
+    Assert.IsTrue(LCell.Runs[0].IsChecked);
+    Assert.AreEqual('radio', LCell.Runs[1].Text);
   finally
     LDocument.Free;
   end;

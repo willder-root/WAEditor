@@ -72,6 +72,7 @@ type
     procedure AppendLineBreak;
     procedure ClosePendingParagraph;
 
+    procedure HandleNestedGroupOpen;
     procedure ParseGroup;
     procedure ParseFontTableGroup;
     procedure ParseFontEntry;
@@ -605,7 +606,15 @@ begin
   begin
     case FRtf[FPos] of
       '\': HandleBackslashEscape;
-      '{': begin Inc(FPos); ParseGroup; end;
+      // Was previously always "Inc(FPos); ParseGroup" without checking
+      // for a recognized destination keyword first: a checkbox/radio
+      // {\field{\*\fldinst ...}{\*\fldrslt ...}} inside a table cell
+      // fell into plain ParseGroup, whose own nested-group handling
+      // then saw the \*-marked \fldinst/\fldrslt sub-groups as generic
+      // ignorable destinations and discarded them outright -- silently
+      // dropping the checkbox/radio run entirely instead of decoding
+      // it via ParseFieldGroup.
+      '{': HandleNestedGroupOpen;
       '}':
         begin
           Inc(FPos);
@@ -794,10 +803,38 @@ begin
   end;
 end;
 
+procedure TWARtfParserState.HandleNestedGroupOpen;
+var
+  LKeyword: string;
+begin
+  LKeyword := PeekKeywordAfterWhitespace;
+  Inc(FPos); // consume '{'
+  // Only skip whitespace ahead of a recognized destination keyword
+  // (e.g. "{ \fonttbl ...}"). An ordinary nested run group ("{ and
+  // CO}", produced whenever a plain-text run happens to start with a
+  // space, e.g. right after a superscript/subscript span closes)
+  // falls through to the plain ParseGroup branch below, where a
+  // leading space is real text content and must be preserved, not
+  // discarded.
+  if LKeyword <> '' then
+    SkipWhitespace;
+  if LKeyword = 'fonttbl' then
+    ParseFontTableGroup
+  else if LKeyword = 'trowd' then
+    ParseTableGroup
+  else if LKeyword = 'listtext' then
+    ParseListTextGroup
+  else if LKeyword = 'field' then
+    ParseFieldGroup
+  else if LKeyword = 'skip' then
+    SkipGroup
+  else
+    ParseGroup;
+end;
+
 procedure TWARtfParserState.ParseGroup;
 var
   LSnapshot: TWARtfGroupSnapshot;
-  LKeyword: string;
 begin
   LSnapshot.Format := FCurrentFormat;
   LSnapshot.Alignment := FCurrentAlignment;
@@ -807,32 +844,7 @@ begin
     begin
       case FRtf[FPos] of
         '\': HandleBackslashEscape;
-        '{':
-          begin
-            LKeyword := PeekKeywordAfterWhitespace;
-            Inc(FPos); // consume '{'
-            // Only skip whitespace ahead of a recognized destination
-            // keyword (e.g. "{ \fonttbl ...}"). An ordinary nested run
-            // group ("{ and CO}", produced whenever a plain-text run
-            // happens to start with a space, e.g. right after a
-            // superscript/subscript span closes) falls through to the
-            // plain ParseGroup branch below, where a leading space is
-            // real text content and must be preserved, not discarded.
-            if LKeyword <> '' then
-              SkipWhitespace;
-            if LKeyword = 'fonttbl' then
-              ParseFontTableGroup
-            else if LKeyword = 'trowd' then
-              ParseTableGroup
-            else if LKeyword = 'listtext' then
-              ParseListTextGroup
-            else if LKeyword = 'field' then
-              ParseFieldGroup
-            else if LKeyword = 'skip' then
-              SkipGroup
-            else
-              ParseGroup;
-          end;
+        '{': HandleNestedGroupOpen;
         '}':
           begin
             Inc(FPos);
