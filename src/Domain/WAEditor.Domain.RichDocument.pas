@@ -3,6 +3,7 @@ unit WAEditor.Domain.RichDocument;
 interface
 
 uses
+  System.SysUtils,
   System.Generics.Collections,
   WAEditor.Domain.Types;
 
@@ -53,9 +54,23 @@ type
     IsCheckbox: Boolean;
     IsChecked: Boolean;
     IsRadio: Boolean;
+    // An inline raster image (HTML's <img src="data:image/...;base64,
+    // ...">, RTF's {\pict\<format>blip ... <hex>}). When True, Text is
+    // always empty and Format is not meaningful. ImageFormat is the
+    // lowercase image kind ('jpeg', 'png', 'gif'); ImageWidthPx/
+    // ImageHeightPx are the display size in pixels, 0 when not known
+    // (this bounded model always carries a real byte-for-byte copy of
+    // the image, not a URL or a file reference).
+    IsImage: Boolean;
+    ImageData: TBytes;
+    ImageFormat: string;
+    ImageWidthPx: Integer;
+    ImageHeightPx: Integer;
     constructor Create(const AText: string; const AFormat: TWARunFormat);
     class function CreateLineBreak: TWARun; static;
     class function CreateCheckbox(AChecked: Boolean; AIsRadio: Boolean = False): TWARun; static;
+    class function CreateImage(const AData: TBytes; const AFormat: string;
+      AWidthPx: Integer = 0; AHeightPx: Integer = 0): TWARun; static;
   end;
 
   TWABlock = class abstract
@@ -186,6 +201,17 @@ begin
   Result.IsCheckbox := True;
   Result.IsChecked := AChecked;
   Result.IsRadio := AIsRadio;
+end;
+
+class function TWARun.CreateImage(const AData: TBytes; const AFormat: string;
+  AWidthPx: Integer; AHeightPx: Integer): TWARun;
+begin
+  Result := TWARun.Create('', TWARunFormat.Plain);
+  Result.IsImage := True;
+  Result.ImageData := AData;
+  Result.ImageFormat := AFormat;
+  Result.ImageWidthPx := AWidthPx;
+  Result.ImageHeightPx := AHeightPx;
 end;
 
 { TWAParagraphBlock }

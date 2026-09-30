@@ -20,9 +20,11 @@ implementation
 
 uses
   System.SysUtils,
+  System.StrUtils,
   System.Classes,
   System.Generics.Collections,
-  WAEditor.Domain.Types;
+  WAEditor.Domain.Types,
+  WAEditor.Domain.ImageInfo;
 
 const
   WA_DEFAULT_RTF_FONT = 'Segoe UI';
@@ -164,9 +166,26 @@ begin
   end;
 end;
 
+function BytesToHex(const AData: TBytes): string;
+var
+  LBuilder: TStringBuilder;
+  B: Byte;
+begin
+  LBuilder := TStringBuilder.Create;
+  try
+    for B in AData do
+      LBuilder.AppendFormat('%.2x', [B]);
+    Result := LBuilder.ToString;
+  finally
+    LBuilder.Free;
+  end;
+end;
+
 function RenderRunGroup(ARun: TWARun; AFontTable: TWAFontTable): string;
 var
   LControlWords: string;
+  LNativeWidthPx, LNativeHeightPx: Integer;
+  LGoalWidthPx, LGoalHeightPx: Integer;
 begin
   if ARun.IsLineBreak then
     Exit('\line' + sLineBreak);
@@ -190,6 +209,38 @@ begin
       Exit('{\field{\*\fldinst{FORMCHECKBOX _Check=true}}{\*\fldrslt{true}}}')
     else
       Exit('{\field{\*\fldinst{FORMCHECKBOX _Check=false}}{\*\fldrslt{false}}}');
+  end;
+  if ARun.IsImage then
+  begin
+    // \picw/\pich are RTF's mandatory native pixel size for a raster
+    // \pict, read straight out of the image's own bytes (its intrinsic
+    // size never depends on how the HTML side chose to display it).
+    // \picwgoal/\pichgoal carry the actual intended DISPLAY size in
+    // twips (this model's usual 1px = 15twips reference) -- the run's
+    // own Width/HeightPx if HTML specified one, falling back to the
+    // native size otherwise -- which wins on readers that support goal
+    // sizing since it's written second. Only jpeg/png have a dedicated
+    // RTF blip keyword; anything else (e.g. a GIF data URI) falls back
+    // to \pngblip, the more widely supported of the two.
+    if not TWAImageInfo.TryGetPixelSize(ARun.ImageData, LNativeWidthPx, LNativeHeightPx) then
+    begin
+      LNativeWidthPx := ARun.ImageWidthPx;
+      LNativeHeightPx := ARun.ImageHeightPx;
+    end;
+    LGoalWidthPx := ARun.ImageWidthPx;
+    LGoalHeightPx := ARun.ImageHeightPx;
+    if LGoalWidthPx <= 0 then
+      LGoalWidthPx := LNativeWidthPx;
+    if LGoalHeightPx <= 0 then
+      LGoalHeightPx := LNativeHeightPx;
+    Result := Format('{\pict\%sblip\picw%d\pich%d\picwgoal%d\pichgoal%d %s}',
+      [
+        IfThen(LowerCase(ARun.ImageFormat) = 'jpeg', 'jpeg', 'png'),
+        LNativeWidthPx, LNativeHeightPx,
+        LGoalWidthPx * 15, LGoalHeightPx * 15,
+        BytesToHex(ARun.ImageData)
+      ]);
+    Exit;
   end;
 
   LControlWords := '';

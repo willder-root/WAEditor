@@ -68,6 +68,9 @@ type
 
     [Test]
     procedure Render_SubscriptRun_EmitsSubControlWord;
+
+    [Test]
+    procedure Render_ImageRun_EmitsPictGroupWithBlipKeywordAndHexBytes;
   end;
 
 implementation
@@ -456,6 +459,28 @@ begin
 
     Assert.Contains(LRtf, '\sub ');
     Assert.IsFalse(LRtf.Contains('\super'));
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentRendererTests.Render_ImageRun_EmitsPictGroupWithBlipKeywordAndHexBytes;
+var
+  LDocument: TWARichDocument;
+  LBytes: TBytes;
+  LRtf: string;
+begin
+  LDocument := TWARichDocument.Create;
+  try
+    LBytes := [$89, $50, $4E, $47];
+    LDocument.AddParagraph.Runs.Add(TWARun.CreateImage(LBytes, 'png', 10, 20));
+    LRtf := TWARtfDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LRtf, '\pict');
+    Assert.Contains(LRtf, '\pngblip');
+    // The image's own bytes, hex-encoded, must appear in full (RTF's
+    // \pict text form: two hex digits per byte, no separators).
+    Assert.Contains(LRtf, '89504E47');
   finally
     LDocument.Free;
   end;

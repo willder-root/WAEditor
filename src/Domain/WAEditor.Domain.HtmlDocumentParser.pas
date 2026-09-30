@@ -23,9 +23,11 @@ uses
   System.StrUtils,
   System.Classes,
   System.Generics.Collections,
+  System.NetEncoding,
   WAEditor.Domain.Types,
   WAEditor.Domain.AlignmentMapper,
-  WAEditor.Domain.FontSizeScale;
+  WAEditor.Domain.FontSizeScale,
+  WAEditor.Domain.ImageInfo;
 
 function DotDecimalFormatSettings: TFormatSettings;
 begin
@@ -252,6 +254,41 @@ begin
     Result := StrToIntDef(LDigits, 0) * 15; // px -> twips at 96dpi
 end;
 
+function TryDecodeDataUriImage(const ASrc: string; out AData: TBytes;
+  out AFormat: string): Boolean;
+// Only inline "data:image/<subtype>;base64,<payload>" sources are
+// supported -- exactly what a WYSIWYG surface's own paste/upload
+// produces -- not a remote http(s) URL, which this bounded model has
+// no way to fetch and embed a byte-for-byte copy of.
+const
+  WA_DATA_IMAGE_PREFIX = 'data:image/';
+  WA_BASE64_MARKER = ';base64,';
+var
+  LLowerSrc: string;
+  LSubtypeStart, LSemiPos, LCommaPos: Integer;
+begin
+  Result := False;
+  AData := nil;
+  AFormat := '';
+  LLowerSrc := LowerCase(ASrc);
+  if Copy(LLowerSrc, 1, Length(WA_DATA_IMAGE_PREFIX)) <> WA_DATA_IMAGE_PREFIX then
+    Exit;
+  LSubtypeStart := Length(WA_DATA_IMAGE_PREFIX) + 1;
+  LSemiPos := PosEx(';', ASrc, LSubtypeStart);
+  LCommaPos := Pos(',', LLowerSrc);
+  if (LSemiPos = 0) or (LCommaPos = 0) or (LCommaPos <= LSemiPos) then
+    Exit;
+  if Copy(LLowerSrc, LSemiPos, Length(WA_BASE64_MARKER)) <> WA_BASE64_MARKER then
+    Exit; // only base64-encoded payloads are supported, not URL-encoded text
+  AFormat := LowerCase(Copy(ASrc, LSubtypeStart, LSemiPos - LSubtypeStart));
+  try
+    AData := TNetEncoding.Base64.DecodeStringToBytes(Copy(ASrc, LCommaPos + 1, MaxInt));
+  except
+    Exit; // malformed base64: treat as "no image" rather than propagate
+  end;
+  Result := True;
+end;
+
 function ParseStyleFormat(const AStyle: string; ABase: TWARunFormat): TWARunFormat;
 var
   LParts: TArray<string>;
@@ -440,6 +477,10 @@ var
   LBorder: Integer;
   LInputType: string;
   LColumnWidth: Integer;
+  LImageData: TBytes;
+  LImageFormat: string;
+  LImageWidthPx, LImageHeightPx: Integer;
+  LNativeWidthPx, LNativeHeightPx: Integer;
 begin
   if (ATagName = 'b') or (ATagName = 'strong') then
   begin
@@ -512,6 +553,42 @@ begin
     if (LInputType = 'checkbox') or (LInputType = 'radio') then
       AppendRun(TWARun.CreateCheckbox(
         HasBooleanAttribute(AAttributes, 'checked'), LInputType = 'radio'));
+  end
+  else if ATagName = 'img' then
+  begin
+    if TryDecodeDataUriImage(ExtractAttribute(AAttributes, 'src'), LImageData, LImageFormat) then
+    begin
+      if not TryStrToInt(Trim(ExtractAttribute(AAttributes, 'width')), LImageWidthPx) then
+        LImageWidthPx := 0;
+      if not TryStrToInt(Trim(ExtractAttribute(AAttributes, 'height')), LImageHeightPx) then
+        LImageHeightPx := 0;
+      // An HTML side that left one or both of width/height unset (or
+      // the RTF -> HTML direction, where the image was never given an
+      // explicit display size to begin with) still needs a concrete
+      // display size to emit an <img>. Fall back to the image's own
+      // intrinsic pixel size, decoded straight from its bytes -- and
+      // when only one side was given, scale the missing one to match
+      // the native aspect ratio rather than discarding the side that
+      // WAS specified (a browser does exactly this for <img width=
+      // "300"> with no height).
+      if (LImageWidthPx <= 0) or (LImageHeightPx <= 0) then
+      begin
+        if TWAImageInfo.TryGetPixelSize(LImageData, LNativeWidthPx, LNativeHeightPx) and
+           (LNativeWidthPx > 0) and (LNativeHeightPx > 0) then
+        begin
+          if (LImageWidthPx <= 0) and (LImageHeightPx <= 0) then
+          begin
+            LImageWidthPx := LNativeWidthPx;
+            LImageHeightPx := LNativeHeightPx;
+          end
+          else if LImageWidthPx <= 0 then
+            LImageWidthPx := Round(LImageHeightPx * LNativeWidthPx / LNativeHeightPx)
+          else
+            LImageHeightPx := Round(LImageWidthPx * LNativeHeightPx / LNativeWidthPx);
+        end;
+      end;
+      AppendRun(TWARun.CreateImage(LImageData, LImageFormat, LImageWidthPx, LImageHeightPx));
+    end;
   end
   else if ATagName = 'table' then
   begin

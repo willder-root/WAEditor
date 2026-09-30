@@ -19,6 +19,7 @@ implementation
 uses
   System.SysUtils,
   System.Classes,
+  System.NetEncoding,
   WAEditor.Domain.Types,
   WAEditor.Domain.AlignmentMapper;
 
@@ -34,6 +35,7 @@ end;
 function RenderRun(ARun: TWARun): string;
 var
   LStyle: string;
+  LBase64: TBase64Encoding;
 begin
   if ARun.IsLineBreak then
     Exit('<br>');
@@ -45,6 +47,26 @@ begin
       Result := '<input type="checkbox"';
     if ARun.IsChecked then
       Result := Result + ' checked';
+    Exit(Result + '>');
+  end;
+  if ARun.IsImage then
+  begin
+    // TNetEncoding.Base64's shared instance wraps output every 76 chars
+    // with a line break by default (the classic MIME convention), which
+    // would litter the data: URI with embedded newlines. A zero
+    // CharsPerLine encoding keeps it on one line, matching what a
+    // WYSIWYG surface's own data: URI looks like.
+    LBase64 := TBase64Encoding.Create(0);
+    try
+      Result := Format('<img src="data:image/%s;base64,%s"',
+        [ARun.ImageFormat, LBase64.EncodeBytesToString(ARun.ImageData)]);
+    finally
+      LBase64.Free;
+    end;
+    if ARun.ImageWidthPx > 0 then
+      Result := Result + Format(' width="%d"', [ARun.ImageWidthPx]);
+    if ARun.ImageHeightPx > 0 then
+      Result := Result + Format(' height="%d"', [ARun.ImageHeightPx]);
     Exit(Result + '>');
   end;
 

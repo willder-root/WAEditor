@@ -41,9 +41,35 @@ type
 
     [Test]
     procedure RtfToHtmlToRtf_PreservesCheckboxAndRadioState;
+
+    [Test]
+    procedure HtmlToRtfToHtml_PreservesImage;
   end;
 
 implementation
+
+uses
+  System.SysUtils,
+  System.NetEncoding;
+
+function BuildTestPngBytes(AWidth, AHeight: Word): TBytes;
+// A syntactically-minimal PNG: signature + one IHDR chunk carrying the
+// requested width/height. No IDAT/IEND -- not viewable by a real image
+// decoder, but enough for this project's own byte-preservation and
+// TWAImageInfo.TryGetPixelSize round trip, which only reads IHDR.
+begin
+  SetLength(Result, 33);
+  Result[0] := $89; Result[1] := Ord('P'); Result[2] := Ord('N'); Result[3] := Ord('G');
+  Result[4] := $0D; Result[5] := $0A; Result[6] := $1A; Result[7] := $0A;
+  Result[8] := 0; Result[9] := 0; Result[10] := 0; Result[11] := 13; // chunk length
+  Result[12] := Ord('I'); Result[13] := Ord('H'); Result[14] := Ord('D'); Result[15] := Ord('R');
+  Result[16] := 0; Result[17] := 0;
+  Result[18] := Byte(AWidth shr 8); Result[19] := Byte(AWidth and $FF);
+  Result[20] := 0; Result[21] := 0;
+  Result[22] := Byte(AHeight shr 8); Result[23] := Byte(AHeight and $FF);
+  Result[24] := 8; Result[25] := 6; Result[26] := 0; Result[27] := 0; Result[28] := 0;
+  Result[29] := 0; Result[30] := 0; Result[31] := 0; Result[32] := 0; // dummy CRC
+end;
 
 function BuildSampleDocument: TWARichDocument;
 begin
@@ -347,6 +373,54 @@ begin
 
   Assert.Contains(LRtf2, 'FORMCHECKBOX _Check=true');
   Assert.Contains(LRtf2, 'FORMCHECKBOX _Radio=off');
+end;
+
+procedure TWARichDocumentRoundTripTests.HtmlToRtfToHtml_PreservesImage;
+var
+  LOriginal, LFromHtml, LFromRtf: TWARichDocument;
+  LHtml, LRtf, LHtmlAgain: string;
+  LImageBytes: TBytes;
+  LRun: TWARun;
+begin
+  // The reported defect: an <img> with an embedded data: URI (exactly
+  // what a WYSIWYG surface's own paste/upload produces) was silently
+  // dropped on the way to RTF -- there was no image support in either
+  // the HTML parser or the RTF renderer/parser at all.
+  LImageBytes := BuildTestPngBytes(200, 100);
+  LOriginal := TWARichDocument.Create;
+  try
+    LOriginal.AddParagraph.Runs.Add(TWARun.CreateImage(LImageBytes, 'png', 200, 100));
+    LHtml := TWAHtmlDocumentRenderer.Render(LOriginal);
+  finally
+    LOriginal.Free;
+  end;
+
+  Assert.Contains(LHtml, '<img src="data:image/png;base64,');
+
+  LFromHtml := TWAHtmlDocumentParser.Parse(LHtml);
+  try
+    LRtf := TWARtfDocumentRenderer.Render(LFromHtml);
+  finally
+    LFromHtml.Free;
+  end;
+
+  Assert.Contains(LRtf, '\pict');
+  Assert.Contains(LRtf, '\pngblip');
+
+  LFromRtf := TWARtfDocumentParser.Parse(LRtf);
+  try
+    LHtmlAgain := TWAHtmlDocumentRenderer.Render(LFromRtf);
+    Assert.Contains(LHtmlAgain, '<img src="data:image/png;base64,');
+
+    LRun := TWAParagraphBlock(LFromRtf.Blocks[0]).Runs[0];
+    Assert.IsTrue(LRun.IsImage);
+    Assert.AreEqual('png', LRun.ImageFormat);
+    Assert.AreEqual(Length(LImageBytes), Length(LRun.ImageData));
+    Assert.AreEqual(200, LRun.ImageWidthPx);
+    Assert.AreEqual(100, LRun.ImageHeightPx);
+  finally
+    LFromRtf.Free;
+  end;
 end;
 
 initialization

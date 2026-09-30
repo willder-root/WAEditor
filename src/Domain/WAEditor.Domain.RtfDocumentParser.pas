@@ -80,6 +80,8 @@ type
     procedure ParseListTextGroup;
     procedure ParseFieldGroup;
     procedure AppendCheckbox(AChecked: Boolean; AIsRadio: Boolean);
+    procedure ParsePictGroup;
+    procedure AppendImage(const AData: TBytes; const AFormat: string; AWidthPx, AHeightPx: Integer);
     procedure SkipGroup;
 
     procedure HandleControlWord(const AName: string; AHasParam: Boolean; AParam: Integer);
@@ -150,9 +152,9 @@ const
   // marked with the generic \* "ignorable if unrecognized" prefix (many
   // real-world writers omit \* on these even though the RTF spec treats
   // them the same way \fonttbl is treated: known, but not body content).
-  WA_SKIPPABLE_DESTINATIONS: array[0..7] of string = (
+  WA_SKIPPABLE_DESTINATIONS: array[0..6] of string = (
     'colortbl', 'stylesheet', 'info', 'rsidtbl', 'listtable',
-    'listoverridetable', 'generator', 'pict');
+    'listoverridetable', 'generator');
 var
   LSavedPos: Integer;
   I: Integer;
@@ -176,6 +178,8 @@ begin
       Result := 'listtext'
     else if MatchesControlWordAt(FPos, 'field') then
       Result := 'field'
+    else if MatchesControlWordAt(FPos, 'pict') then
+      Result := 'pict'
     else
       for I := Low(WA_SKIPPABLE_DESTINATIONS) to High(WA_SKIPPABLE_DESTINATIONS) do
         if MatchesControlWordAt(FPos, WA_SKIPPABLE_DESTINATIONS[I]) then
@@ -218,7 +222,7 @@ begin
   if FCurrentCell <> nil then
   begin
     if (FCurrentCell.Runs.Count > 0) and (not FCurrentCell.Runs.Last.IsLineBreak) and
-       (not FCurrentCell.Runs.Last.IsCheckbox) and
+       (not FCurrentCell.Runs.Last.IsCheckbox) and (not FCurrentCell.Runs.Last.IsImage) and
        FCurrentCell.Runs.Last.Format.EqualsFormat(FCurrentFormat) then
       FCurrentCell.Runs.Last.Text := FCurrentCell.Runs.Last.Text + AChar
     else
@@ -227,7 +231,7 @@ begin
   else if FCurrentListItem <> nil then
   begin
     if (FCurrentListItem.Runs.Count > 0) and (not FCurrentListItem.Runs.Last.IsLineBreak) and
-       (not FCurrentListItem.Runs.Last.IsCheckbox) and
+       (not FCurrentListItem.Runs.Last.IsCheckbox) and (not FCurrentListItem.Runs.Last.IsImage) and
        FCurrentListItem.Runs.Last.Format.EqualsFormat(FCurrentFormat) then
       FCurrentListItem.Runs.Last.Text := FCurrentListItem.Runs.Last.Text + AChar
     else
@@ -237,7 +241,7 @@ begin
   begin
     EnsureParagraph;
     if (FCurrentParagraph.Runs.Count > 0) and (not FCurrentParagraph.Runs.Last.IsLineBreak) and
-       (not FCurrentParagraph.Runs.Last.IsCheckbox) and
+       (not FCurrentParagraph.Runs.Last.IsCheckbox) and (not FCurrentParagraph.Runs.Last.IsImage) and
        FCurrentParagraph.Runs.Last.Format.EqualsFormat(FCurrentFormat) then
       FCurrentParagraph.Runs.Last.Text := FCurrentParagraph.Runs.Last.Text + AChar
     else
@@ -268,6 +272,20 @@ begin
   begin
     EnsureParagraph;
     FCurrentParagraph.Runs.Add(TWARun.CreateCheckbox(AChecked, AIsRadio));
+  end;
+end;
+
+procedure TWARtfParserState.AppendImage(const AData: TBytes; const AFormat: string;
+  AWidthPx, AHeightPx: Integer);
+begin
+  if FCurrentCell <> nil then
+    FCurrentCell.Runs.Add(TWARun.CreateImage(AData, AFormat, AWidthPx, AHeightPx))
+  else if FCurrentListItem <> nil then
+    FCurrentListItem.Runs.Add(TWARun.CreateImage(AData, AFormat, AWidthPx, AHeightPx))
+  else
+  begin
+    EnsureParagraph;
+    FCurrentParagraph.Runs.Add(TWARun.CreateImage(AData, AFormat, AWidthPx, AHeightPx));
   end;
 end;
 
@@ -761,6 +779,105 @@ begin
   AppendCheckbox(LChecked, LIsRadio);
 end;
 
+procedure TWARtfParserState.ParsePictGroup;
+// {\pict\<format>blip\picw<nativeW>\pich<nativeH>\picwgoal<goalWtwips>
+// \pichgoal<goalHtwips> <hex bytes...>}: this project's own renderer
+// always writes native size in pixels and goal size in twips (the
+// latter converted at this model's usual 1px = 15twips reference), in
+// that order, so goal -- read second -- naturally wins when both are
+// present, matching the intended display size. Other \pict control
+// words (\picscalex, \wmetafile, etc.) are recognized but ignored;
+// \binN raw-binary picture data (as opposed to hex text) is not
+// supported, consistent with this parser targeting its own writer's
+// output and known real-world patterns rather than being a
+// general-purpose RTF engine.
+var
+  LDepth: Integer;
+  LFormat: string;
+  LWidthPx, LHeightPx: Integer;
+  LHexBuffer: TStringBuilder;
+  LWordStart, LDigitsStart: Integer;
+  LWord: string;
+  LNegative, LHasParam: Boolean;
+  LParam: Integer;
+  LData: TBytes;
+  I: Integer;
+  LHex: string;
+begin
+  Inc(FPos, 5); // consume '\pict'
+  LDepth := 1;
+  LFormat := 'png';
+  LWidthPx := 0;
+  LHeightPx := 0;
+  LHexBuffer := TStringBuilder.Create;
+  try
+    while (not AtEnd) and (LDepth > 0) do
+    begin
+      case FRtf[FPos] of
+        '\':
+          begin
+            Inc(FPos);
+            if AtEnd then
+              Break;
+            LWordStart := FPos;
+            while (not AtEnd) and IsAsciiLetter(FRtf[FPos]) do
+              Inc(FPos);
+            LWord := Copy(FRtf, LWordStart, FPos - LWordStart);
+            LNegative := (not AtEnd) and (FRtf[FPos] = '-');
+            if LNegative then
+              Inc(FPos);
+            LDigitsStart := FPos;
+            while (not AtEnd) and IsAsciiDigit(FRtf[FPos]) do
+              Inc(FPos);
+            LHasParam := FPos > LDigitsStart;
+            LParam := 0;
+            if LHasParam then
+            begin
+              LParam := StrToInt(Copy(FRtf, LDigitsStart, FPos - LDigitsStart));
+              if LNegative then
+                LParam := -LParam;
+            end;
+            if (not AtEnd) and (FRtf[FPos] = ' ') then
+              Inc(FPos);
+
+            if LWord = 'jpegblip' then
+              LFormat := 'jpeg'
+            else if LWord = 'pngblip' then
+              LFormat := 'png'
+            else if (LWord = 'picw') and LHasParam then
+              LWidthPx := LParam
+            else if (LWord = 'pich') and LHasParam then
+              LHeightPx := LParam
+            else if (LWord = 'picwgoal') and LHasParam then
+              LWidthPx := LParam div 15
+            else if (LWord = 'pichgoal') and LHasParam then
+              LHeightPx := LParam div 15;
+            // any other \pict control word is recognized-but-ignored
+          end;
+        '{': begin Inc(LDepth); Inc(FPos); end;
+        '}':
+          begin
+            Dec(LDepth);
+            Inc(FPos);
+          end;
+        ' ', #9, #10, #13: Inc(FPos); // whitespace between hex digit pairs
+      else
+        LHexBuffer.Append(FRtf[FPos]);
+        Inc(FPos);
+      end;
+    end;
+
+    LHex := LHexBuffer.ToString;
+    SetLength(LData, Length(LHex) div 2);
+    for I := 0 to Length(LData) - 1 do
+      LData[I] := Byte(StrToInt('$' + Copy(LHex, I * 2 + 1, 2)));
+
+    AppendImage(LData, LFormat, LWidthPx, LHeightPx);
+  finally
+    LHexBuffer.Free;
+  end;
+end;
+
 procedure TWARtfParserState.SkipGroup;
 // Discards an entire ignorable/unsupported destination group (already
 // past its opening '{'), including any nested groups, without treating
@@ -826,6 +943,8 @@ begin
     ParseListTextGroup
   else if LKeyword = 'field' then
     ParseFieldGroup
+  else if LKeyword = 'pict' then
+    ParsePictGroup
   else if LKeyword = 'skip' then
     SkipGroup
   else

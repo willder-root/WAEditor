@@ -100,9 +100,41 @@ type
 
     [Test]
     procedure Parse_TextOutsideSupSub_IsNotSuperscriptOrSubscript;
+
+    [Test]
+    procedure Parse_ImgDataUri_ProducesImageRunWithDecodedBytesAndFormat;
+
+    [Test]
+    procedure Parse_ImgWidthOnly_ScalesHeightToNativeAspectRatio;
+
+    [Test]
+    procedure Parse_ImgWithoutDataUriSrc_IsIgnored;
   end;
 
 implementation
+
+uses
+  System.SysUtils,
+  System.NetEncoding;
+
+function BuildTestPngBytes(AWidth, AHeight: Word): TBytes;
+// A syntactically-minimal PNG: signature + one IHDR chunk carrying the
+// requested width/height. No IDAT/IEND -- not viewable by a real image
+// decoder, but enough for this project's own byte-preservation and
+// TWAImageInfo.TryGetPixelSize round trip, which only reads IHDR.
+begin
+  SetLength(Result, 33);
+  Result[0] := $89; Result[1] := Ord('P'); Result[2] := Ord('N'); Result[3] := Ord('G');
+  Result[4] := $0D; Result[5] := $0A; Result[6] := $1A; Result[7] := $0A;
+  Result[8] := 0; Result[9] := 0; Result[10] := 0; Result[11] := 13; // chunk length
+  Result[12] := Ord('I'); Result[13] := Ord('H'); Result[14] := Ord('D'); Result[15] := Ord('R');
+  Result[16] := 0; Result[17] := 0;
+  Result[18] := Byte(AWidth shr 8); Result[19] := Byte(AWidth and $FF);
+  Result[20] := 0; Result[21] := 0;
+  Result[22] := Byte(AHeight shr 8); Result[23] := Byte(AHeight and $FF);
+  Result[24] := 8; Result[25] := 6; Result[26] := 0; Result[27] := 0; Result[28] := 0;
+  Result[29] := 0; Result[30] := 0; Result[31] := 0; Result[32] := 0; // dummy CRC
+end;
 
 procedure TWAHtmlDocumentParserTests.Parse_SimpleParagraph_ProducesOneParagraphWithText;
 var
@@ -540,6 +572,73 @@ begin
     Assert.AreEqual('sergio', LRun.Text);
     Assert.IsFalse(LRun.Format.Superscript);
     Assert.IsFalse(LRun.Format.Subscript);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_ImgDataUri_ProducesImageRunWithDecodedBytesAndFormat;
+var
+  LBytes: TBytes;
+  LDocument: TWARichDocument;
+  LRun: TWARun;
+begin
+  LBytes := BuildTestPngBytes(200, 100);
+  LDocument := TWAHtmlDocumentParser.Parse(Format(
+    '<p><img src="data:image/png;base64,%s"></p>',
+    [TNetEncoding.Base64.EncodeBytesToString(LBytes)]));
+  try
+    LRun := TWAParagraphBlock(LDocument.Blocks[0]).Runs[0];
+    Assert.IsTrue(LRun.IsImage);
+    Assert.AreEqual('png', LRun.ImageFormat);
+    Assert.AreEqual(Length(LBytes), Length(LRun.ImageData));
+    // No width/height attribute given: falls back to the native size
+    // decoded straight from the PNG's own IHDR chunk.
+    Assert.AreEqual(200, LRun.ImageWidthPx);
+    Assert.AreEqual(100, LRun.ImageHeightPx);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_ImgWidthOnly_ScalesHeightToNativeAspectRatio;
+var
+  LBytes: TBytes;
+  LDocument: TWARichDocument;
+  LRun: TWARun;
+begin
+  // Native aspect ratio is 2:1 (200x100); given only width="50", the
+  // missing height must scale proportionally to 25, not fall back to
+  // the full native height (a browser does exactly this for an <img
+  // width="..."> with no height).
+  LBytes := BuildTestPngBytes(200, 100);
+  LDocument := TWAHtmlDocumentParser.Parse(Format(
+    '<p><img src="data:image/png;base64,%s" width="50"></p>',
+    [TNetEncoding.Base64.EncodeBytesToString(LBytes)]));
+  try
+    LRun := TWAParagraphBlock(LDocument.Blocks[0]).Runs[0];
+    Assert.AreEqual(50, LRun.ImageWidthPx);
+    Assert.AreEqual(25, LRun.ImageHeightPx);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_ImgWithoutDataUriSrc_IsIgnored;
+var
+  LDocument: TWARichDocument;
+  LParagraph: TWAParagraphBlock;
+begin
+  // This bounded model only embeds a byte-for-byte copy of a self-
+  // contained data: URI; a remote http(s) URL has nothing to fetch and
+  // embed, so the <img> is dropped rather than producing a broken
+  // image run with no bytes.
+  LDocument := TWAHtmlDocumentParser.Parse(
+    '<p><img src="https://example.com/pic.png">text</p>');
+  try
+    LParagraph := TWAParagraphBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(1, LParagraph.Runs.Count);
+    Assert.AreEqual('text', LParagraph.Runs[0].Text);
   finally
     LDocument.Free;
   end;

@@ -53,12 +53,16 @@ type
 
     [Test]
     procedure Render_SubscriptRun_WrapsTextInSubTag;
+
+    [Test]
+    procedure Render_ImageRun_EmitsImgWithDataUriAndDimensions;
   end;
 
 implementation
 
 uses
-  System.SysUtils;
+  System.SysUtils,
+  System.NetEncoding;
 
 procedure TWAHtmlDocumentRendererTests.Render_ParagraphWithBoldRun_WrapsTextInBoldTag;
 var
@@ -317,6 +321,27 @@ begin
     LHtml := TWAHtmlDocumentRenderer.Render(LDocument);
 
     Assert.Contains(LHtml, '<sub>22</sub>');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentRendererTests.Render_ImageRun_EmitsImgWithDataUriAndDimensions;
+var
+  LDocument: TWARichDocument;
+  LBytes: TBytes;
+  LHtml: string;
+begin
+  LDocument := TWARichDocument.Create;
+  try
+    LBytes := [1, 2, 3, 4];
+    LDocument.AddParagraph.Runs.Add(TWARun.CreateImage(LBytes, 'png', 40, 20));
+    LHtml := TWAHtmlDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LHtml, Format('<img src="data:image/png;base64,%s"',
+      [TNetEncoding.Base64.EncodeBytesToString(LBytes)]));
+    Assert.Contains(LHtml, 'width="40"');
+    Assert.Contains(LHtml, 'height="20"');
   finally
     LDocument.Free;
   end;

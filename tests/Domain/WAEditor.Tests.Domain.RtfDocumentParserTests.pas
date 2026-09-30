@@ -103,6 +103,12 @@ type
     procedure Parse_SubControlWord_SetsSubscriptOnRunFormat;
 
     [Test]
+    procedure Parse_PictGroup_ProducesImageRunWithDecodedBytesAndGoalDimensions;
+
+    [Test]
+    procedure Parse_PictGroupJpeg_SetsJpegFormat;
+
+    [Test]
     procedure Parse_PlainRunGroupStartingWithSpace_PreservesLeadingSpace;
 
     [Test]
@@ -767,6 +773,57 @@ begin
     Assert.IsTrue(LCell.Runs[0].IsRadio);
     Assert.IsTrue(LCell.Runs[0].IsChecked);
     Assert.AreEqual('radio', LCell.Runs[1].Text);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_PictGroup_ProducesImageRunWithDecodedBytesAndGoalDimensions;
+var
+  LDocument: TWARichDocument;
+  LParagraph: TWAParagraphBlock;
+  LRun: TWARun;
+begin
+  // \picwgoal/\pichgoal (in twips, at this model's 1px = 15twips
+  // reference) are the intended DISPLAY size and are written after
+  // \picw/\pich (the native size) by this project's own renderer, so
+  // they must win when both are present. Using deliberately different
+  // native (10x20) vs. goal (300/150 twips = 20x10) values here proves
+  // precedence rather than leaving it ambiguous.
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 \pard {\pict\pngblip\picw10\pich20\picwgoal300\pichgoal150 89504e47}\par}');
+  try
+    LParagraph := TWAParagraphBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(1, LParagraph.Runs.Count);
+    LRun := LParagraph.Runs[0];
+    Assert.IsTrue(LRun.IsImage);
+    Assert.AreEqual('png', LRun.ImageFormat);
+    Assert.AreEqual(4, Length(LRun.ImageData));
+    Assert.AreEqual(Byte($89), LRun.ImageData[0]);
+    Assert.AreEqual(Byte($50), LRun.ImageData[1]);
+    Assert.AreEqual(Byte($4E), LRun.ImageData[2]);
+    Assert.AreEqual(Byte($47), LRun.ImageData[3]);
+    Assert.AreEqual(20, LRun.ImageWidthPx);
+    Assert.AreEqual(10, LRun.ImageHeightPx);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_PictGroupJpeg_SetsJpegFormat;
+var
+  LDocument: TWARichDocument;
+  LRun: TWARun;
+begin
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 \pard {\pict\jpegblip\picw5\pich5 ab}\par}');
+  try
+    LRun := TWAParagraphBlock(LDocument.Blocks[0]).Runs[0];
+    Assert.AreEqual('jpeg', LRun.ImageFormat);
+    Assert.AreEqual(1, Length(LRun.ImageData));
+    Assert.AreEqual(Byte($AB), LRun.ImageData[0]);
+    Assert.AreEqual(5, LRun.ImageWidthPx);
+    Assert.AreEqual(5, LRun.ImageHeightPx);
   finally
     LDocument.Free;
   end;
