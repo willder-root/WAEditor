@@ -109,6 +109,15 @@ type
     procedure Parse_PictGroupJpeg_SetsJpegFormat;
 
     [Test]
+    procedure Parse_PictWmetafileWithBitmap_ProducesBmpImageRun;
+
+    [Test]
+    procedure Parse_PictDibitmap_ProducesBmpImageRun;
+
+    [Test]
+    procedure Parse_ParInsideTableCell_BecomesLineBreakBetweenLines;
+
+    [Test]
     procedure Parse_PlainRunGroupStartingWithSpace_PreservesLeadingSpace;
 
     [Test]
@@ -824,6 +833,77 @@ begin
     Assert.AreEqual(Byte($AB), LRun.ImageData[0]);
     Assert.AreEqual(5, LRun.ImageWidthPx);
     Assert.AreEqual(5, LRun.ImageHeightPx);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_PictWmetafileWithBitmap_ProducesBmpImageRun;
+const
+  // Header, one META_DIBSTRETCHBLT record carrying a 1x1 24bpp DIB, META_EOF.
+  WA_WMF_HEX = '0100090000032f000000000023000000000023000000410b2000cc000100010000000000010001000000000028000000010000000100000001001800000000000400000000000000000000000000000000000000FF00FF00030000000000';
+var
+  LDocument: TWARichDocument;
+  LRun: TWARun;
+begin
+  // \wmetafile is how WPTools stores a pasted bitmap. A browser cannot
+  // show a WMF, so the bitmap must come out as .bmp -- previously it was
+  // mislabeled image/png and rendered as a broken image.
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 \pard {\pict\wmetafile8\picw100\pich100\picwgoal300\pichgoal300 ' +
+    WA_WMF_HEX + '}\par}');
+  try
+    LRun := TWAParagraphBlock(LDocument.Blocks[0]).Runs[0];
+    Assert.IsTrue(LRun.IsImage);
+    Assert.AreEqual('bmp', LRun.ImageFormat);
+    Assert.AreEqual(14 + 44, Length(LRun.ImageData));
+    Assert.AreEqual(Byte(Ord('B')), LRun.ImageData[0]);
+    Assert.AreEqual(20, LRun.ImageWidthPx);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_PictDibitmap_ProducesBmpImageRun;
+var
+  LDocument: TWARichDocument;
+  LRun: TWARun;
+  LHex: string;
+begin
+  // A bare 1x1 24bpp DIB: 40-byte BITMAPINFOHEADER + one padded row.
+  LHex := '28000000' + '01000000' + '01000000' + '0100' + '1800' + '00000000' +
+    '04000000' + '00000000' + '00000000' + '00000000' + '00000000' +
+    'FF00FF00';
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 \pard {\pict\dibitmap0\picw1\pich1\picwgoal15\pichgoal15 ' + LHex + '}\par}');
+  try
+    LRun := TWAParagraphBlock(LDocument.Blocks[0]).Runs[0];
+    Assert.IsTrue(LRun.IsImage);
+    Assert.AreEqual('bmp', LRun.ImageFormat);
+    Assert.AreEqual(14 + Length(LHex) div 2, Length(LRun.ImageData));
+    Assert.AreEqual(Byte(Ord('B')), LRun.ImageData[0]);
+    Assert.AreEqual(1, LRun.ImageWidthPx);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_ParInsideTableCell_BecomesLineBreakBetweenLines;
+var
+  LDocument: TWARichDocument;
+  LCell: TWATableCell;
+begin
+  // Two paragraphs inside one cell used to be glued together
+  // ("manhaHorarios..."): \par was ignored whenever a cell was open.
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 {\trowd\cellx3000\pard\intbl Linha um\par' + #13#10 +
+    'Linha dois\par' + #13#10 + '\cell\row}}');
+  try
+    LCell := TWATableBlock(LDocument.Blocks[0]).Rows[0].Cells[0];
+    Assert.AreEqual(3, LCell.Runs.Count);
+    Assert.AreEqual('Linha um', LCell.Runs[0].Text);
+    Assert.IsTrue(LCell.Runs[1].IsLineBreak);
+    Assert.AreEqual('Linha dois', LCell.Runs[2].Text);
   finally
     LDocument.Free;
   end;

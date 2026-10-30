@@ -53,6 +53,18 @@ begin
     end;
   end;
 
+  // BMP: BITMAPFILEHEADER (14) then BITMAPINFOHEADER, whose signed
+  // 32-bit width/height sit at fixed offsets 18/22 (height is negative
+  // for a top-down bitmap).
+  if (LLen >= 26) and (AData[0] = Ord('B')) and (AData[1] = Ord('M')) then
+  begin
+    AWidthPx := Integer((Cardinal(AData[18]) or (Cardinal(AData[19]) shl 8) or
+      (Cardinal(AData[20]) shl 16) or (Cardinal(AData[21]) shl 24)));
+    AHeightPx := Abs(Integer((Cardinal(AData[22]) or (Cardinal(AData[23]) shl 8) or
+      (Cardinal(AData[24]) shl 16) or (Cardinal(AData[25]) shl 24))));
+    Exit((AWidthPx > 0) and (AHeightPx > 0));
+  end;
+
   // JPEG: scan markers for the first Start-Of-Frame segment
   // (0xC0-0xCF except the non-SOF 0xC4/0xC8/0xCC), which carries
   // [length:2][precision:1][height:2][width:2] right after the marker.

@@ -18,6 +18,7 @@ uses
   WAEditor.Tests.Domain.HtmlDocumentParserTests in 'Domain\WAEditor.Tests.Domain.HtmlDocumentParserTests.pas',
   WAEditor.Tests.Domain.RtfDocumentParserTests in 'Domain\WAEditor.Tests.Domain.RtfDocumentParserTests.pas',
   WAEditor.Tests.Domain.RichDocumentRoundTripTests in 'Domain\WAEditor.Tests.Domain.RichDocumentRoundTripTests.pas',
+  WAEditor.Tests.Domain.BitmapConverterTests in 'Domain\WAEditor.Tests.Domain.BitmapConverterTests.pas',
   WAEditor.Tests.Fakes.FakeHtmlEditorEngine in 'Fakes\WAEditor.Tests.Fakes.FakeHtmlEditorEngine.pas',
   WAEditor.Tests.Fakes.FakeHtmlDocumentStorage in 'Fakes\WAEditor.Tests.Fakes.FakeHtmlDocumentStorage.pas',
   WAEditor.Tests.Application.CommandTests in 'Application\WAEditor.Tests.Application.CommandTests.pas',

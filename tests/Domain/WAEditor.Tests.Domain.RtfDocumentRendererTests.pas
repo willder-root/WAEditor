@@ -71,6 +71,9 @@ type
 
     [Test]
     procedure Render_ImageRun_EmitsPictGroupWithBlipKeywordAndHexBytes;
+
+    [Test]
+    procedure Render_BmpImageRun_EmitsDibitmapWithoutFileHeader;
   end;
 
 implementation
@@ -481,6 +484,32 @@ begin
     // The image's own bytes, hex-encoded, must appear in full (RTF's
     // \pict text form: two hex digits per byte, no separators).
     Assert.Contains(LRtf, '89504E47');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentRendererTests.Render_BmpImageRun_EmitsDibitmapWithoutFileHeader;
+var
+  LDocument: TWARichDocument;
+  LBmp: TBytes;
+  LRtf: string;
+begin
+  // A .bmp has no *blip keyword; RTF carries it as a bare DIB, i.e. the
+  // file without its 14-byte BITMAPFILEHEADER ('BM' = 424D must not appear).
+  SetLength(LBmp, 14 + 40);
+  FillChar(LBmp[0], Length(LBmp), 0);
+  LBmp[0] := Ord('B'); LBmp[1] := Ord('M');
+  LBmp[14] := 40;
+  LBmp[18] := 1; LBmp[22] := 1;
+  LDocument := TWARichDocument.Create;
+  try
+    LDocument.AddParagraph.Runs.Add(TWARun.CreateImage(LBmp, 'bmp', 1, 1));
+    LRtf := TWARtfDocumentRenderer.Render(LDocument);
+    Assert.Contains(LRtf, '\dibitmap0');
+    Assert.IsFalse(LRtf.Contains('\pngblip'));
+    Assert.IsFalse(LRtf.Contains(' 424D'));
+    Assert.Contains(LRtf, ' 28000000');
   finally
     LDocument.Free;
   end;

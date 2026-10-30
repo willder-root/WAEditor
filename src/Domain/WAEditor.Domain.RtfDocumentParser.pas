@@ -23,7 +23,8 @@ implementation
 uses
   System.SysUtils,
   System.Generics.Collections,
-  WAEditor.Domain.Types;
+  WAEditor.Domain.Types,
+  WAEditor.Domain.BitmapConverter;
 
 type
   TWARtfGroupSnapshot = record
@@ -46,6 +47,11 @@ type
     FCurrentTable: TWATableBlock;
     FCurrentRow: TWATableRow;
     FCurrentCell: TWATableCell;
+    // A \par inside a cell is a paragraph boundary within it; the model
+    // has no per-cell paragraphs, so it becomes a line break run -- but
+    // only once more content follows, so the \par that ends a cell's
+    // last line does not leave a trailing blank line.
+    FCellParagraphBreakPending: Boolean;
     // \cellx values accumulated for the row currently being read; each
     // is a cumulative right-edge position in twips, reset at \trowd and
     // turned into per-column widths (via consecutive differences) on
@@ -70,6 +76,7 @@ type
     procedure EnsureParagraph;
     procedure AppendChar(AChar: Char);
     procedure AppendLineBreak;
+    procedure FlushCellParagraphBreak;
     procedure ClosePendingParagraph;
 
     procedure HandleNestedGroupOpen;
@@ -205,6 +212,16 @@ begin
   FCurrentParagraph := nil;
 end;
 
+procedure TWARtfParserState.FlushCellParagraphBreak;
+begin
+  if FCellParagraphBreakPending and (FCurrentCell <> nil) then
+  begin
+    if FCurrentCell.Runs.Count > 0 then
+      FCurrentCell.Runs.Add(TWARun.CreateLineBreak);
+    FCellParagraphBreakPending := False;
+  end;
+end;
+
 procedure TWARtfParserState.AppendChar(AChar: Char);
 begin
   if FMarkerPending then
@@ -221,6 +238,7 @@ begin
 
   if FCurrentCell <> nil then
   begin
+    FlushCellParagraphBreak;
     if (FCurrentCell.Runs.Count > 0) and (not FCurrentCell.Runs.Last.IsLineBreak) and
        (not FCurrentCell.Runs.Last.IsCheckbox) and (not FCurrentCell.Runs.Last.IsImage) and
        FCurrentCell.Runs.Last.Format.EqualsFormat(FCurrentFormat) then
@@ -251,6 +269,7 @@ end;
 
 procedure TWARtfParserState.AppendLineBreak;
 begin
+  FlushCellParagraphBreak;
   if FCurrentCell <> nil then
     FCurrentCell.Runs.Add(TWARun.CreateLineBreak)
   else if FCurrentListItem <> nil then
@@ -264,6 +283,7 @@ end;
 
 procedure TWARtfParserState.AppendCheckbox(AChecked: Boolean; AIsRadio: Boolean);
 begin
+  FlushCellParagraphBreak;
   if FCurrentCell <> nil then
     FCurrentCell.Runs.Add(TWARun.CreateCheckbox(AChecked, AIsRadio))
   else if FCurrentListItem <> nil then
@@ -278,6 +298,7 @@ end;
 procedure TWARtfParserState.AppendImage(const AData: TBytes; const AFormat: string;
   AWidthPx, AHeightPx: Integer);
 begin
+  FlushCellParagraphBreak;
   if FCurrentCell <> nil then
     FCurrentCell.Runs.Add(TWARun.CreateImage(AData, AFormat, AWidthPx, AHeightPx))
   else if FCurrentListItem <> nil then
@@ -297,6 +318,8 @@ var
 begin
   if AName = 'par' then
   begin
+    if FCurrentCell <> nil then
+      FCellParagraphBreakPending := True;
     if FCurrentCell = nil then
     begin
       if FListItemPending then
@@ -443,7 +466,10 @@ begin
       FCurrentCell := FCurrentRow.AddCell;
   end
   else if AName = 'cell' then
-    FCurrentCell := nil
+  begin
+    FCurrentCell := nil;
+    FCellParagraphBreakPending := False;
+  end
   else if AName = 'row' then
   begin
     // \cellx values are cumulative right-edge positions in twips; only
@@ -800,15 +826,17 @@ var
   LWord: string;
   LNegative, LHasParam: Boolean;
   LParam: Integer;
-  LData: TBytes;
+  LData, LBmp: TBytes;
   I: Integer;
   LHex: string;
+  LSourceKind: string;
 begin
   Inc(FPos, 5); // consume '\pict'
   LDepth := 1;
   LFormat := 'png';
   LWidthPx := 0;
   LHeightPx := 0;
+  LSourceKind := '';
   LHexBuffer := TStringBuilder.Create;
   try
     while (not AtEnd) and (LDepth > 0) do
@@ -844,14 +872,18 @@ begin
               LFormat := 'jpeg'
             else if LWord = 'pngblip' then
               LFormat := 'png'
+            else if LWord = 'wmetafile' then
+              LSourceKind := 'wmf'
+            else if LWord = 'dibitmap' then
+              LSourceKind := 'dib'
             else if (LWord = 'picw') and LHasParam then
               LWidthPx := LParam
             else if (LWord = 'pich') and LHasParam then
               LHeightPx := LParam
             else if (LWord = 'picwgoal') and LHasParam then
-              LWidthPx := LParam div 15
+              LWidthPx := (LParam + 7) div 15
             else if (LWord = 'pichgoal') and LHasParam then
-              LHeightPx := LParam div 15;
+              LHeightPx := (LParam + 7) div 15;
             // any other \pict control word is recognized-but-ignored
           end;
         '{': begin Inc(LDepth); Inc(FPos); end;
@@ -871,6 +903,25 @@ begin
     SetLength(LData, Length(LHex) div 2);
     for I := 0 to Length(LData) - 1 do
       LData[I] := Byte(StrToInt('$' + Copy(LHex, I * 2 + 1, 2)));
+
+    // A browser cannot display either of RTF's Windows-native picture
+    // containers, so a bare DIB or a WMF-wrapped bitmap (how WPTools
+    // stores a pasted bitmap) is re-wrapped as a plain .bmp. A WMF with
+    // no bitmap record is purely vector and has nothing to show.
+    if LSourceKind = 'wmf' then
+    begin
+      if not TWABitmapConverter.TryWmfToBmp(LData, LBmp) then
+        Exit;
+      LData := LBmp;
+      LFormat := 'bmp';
+    end
+    else if LSourceKind = 'dib' then
+    begin
+      if not TWABitmapConverter.TryDibToBmp(LData, LBmp) then
+        Exit;
+      LData := LBmp;
+      LFormat := 'bmp';
+    end;
 
     AppendImage(LData, LFormat, LWidthPx, LHeightPx);
   finally

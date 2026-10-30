@@ -24,7 +24,8 @@ uses
   System.Classes,
   System.Generics.Collections,
   WAEditor.Domain.Types,
-  WAEditor.Domain.ImageInfo;
+  WAEditor.Domain.ImageInfo,
+  WAEditor.Domain.BitmapConverter;
 
 const
   WA_DEFAULT_RTF_FONT = 'Segoe UI';
@@ -186,6 +187,7 @@ var
   LControlWords: string;
   LNativeWidthPx, LNativeHeightPx: Integer;
   LGoalWidthPx, LGoalHeightPx: Integer;
+  LDib: TBytes;
 begin
   if ARun.IsLineBreak then
     Exit('\line' + sLineBreak);
@@ -233,6 +235,16 @@ begin
       LGoalWidthPx := LNativeWidthPx;
     if LGoalHeightPx <= 0 then
       LGoalHeightPx := LNativeHeightPx;
+    // A .bmp has no *blip keyword: RTF carries it as a bare DIB (the
+    // file minus its 14-byte BITMAPFILEHEADER) under \dibitmap0.
+    if (LowerCase(ARun.ImageFormat) = 'bmp') and
+       TWABitmapConverter.TryBmpToDib(ARun.ImageData, LDib) then
+    begin
+      Result := Format('{\pict\dibitmap0\picw%d\pich%d\picwgoal%d\pichgoal%d %s}',
+        [LNativeWidthPx, LNativeHeightPx, LGoalWidthPx * 15, LGoalHeightPx * 15,
+         BytesToHex(LDib)]);
+      Exit;
+    end;
     Result := Format('{\pict\%sblip\picw%d\pich%d\picwgoal%d\pichgoal%d %s}',
       [
         IfThen(LowerCase(ARun.ImageFormat) = 'jpeg', 'jpeg', 'png'),
