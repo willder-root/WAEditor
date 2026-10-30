@@ -129,14 +129,64 @@ type
     function Parse: TWARichDocument;
   end;
 
+function DecodeNumericCharacterReferences(const AText: string): string;
+// &#60; (decimal) and &#x3C; (hex) character references.
+var
+  LBuilder: TStringBuilder;
+  I, LEnd, LCode: Integer;
+  LDigits: string;
+  LIsHex: Boolean;
+begin
+  LBuilder := TStringBuilder.Create;
+  try
+    I := 1;
+    while I <= Length(AText) do
+    begin
+      if (AText[I] = '&') and (I + 2 <= Length(AText)) and (AText[I + 1] = '#') then
+      begin
+        LEnd := PosEx(';', AText, I + 2);
+        if (LEnd > 0) and (LEnd - I <= 10) then
+        begin
+          LIsHex := CharInSet(AText[I + 2], ['x', 'X']);
+          if LIsHex then
+            LDigits := Copy(AText, I + 3, LEnd - I - 3)
+          else
+            LDigits := Copy(AText, I + 2, LEnd - I - 2);
+          if LDigits <> '' then
+            if LIsHex then
+              LCode := StrToIntDef('$' + LDigits, -1)
+            else
+              LCode := StrToIntDef(LDigits, -1)
+          else
+            LCode := -1;
+          if (LCode > 0) and (LCode <= $FFFF) then
+          begin
+            LBuilder.Append(Char(LCode));
+            I := LEnd + 1;
+            Continue;
+          end;
+        end;
+      end;
+      LBuilder.Append(AText[I]);
+      Inc(I);
+    end;
+    Result := LBuilder.ToString;
+  finally
+    LBuilder.Free;
+  end;
+end;
+
 function DecodeHtmlEntities(const AText: string): string;
+// Order matters: named entities first, numeric references next, '&amp;'
+// last, so no decoded '&' is ever re-read as the start of another entity
+// ("&amp;lt;" and "&#38;lt;" both stay the literal text "&lt;").
 begin
   Result := AText;
   Result := StringReplace(Result, '&nbsp;', ' ', [rfReplaceAll, rfIgnoreCase]);
   Result := StringReplace(Result, '&lt;', '<', [rfReplaceAll, rfIgnoreCase]);
   Result := StringReplace(Result, '&gt;', '>', [rfReplaceAll, rfIgnoreCase]);
   Result := StringReplace(Result, '&quot;', '"', [rfReplaceAll, rfIgnoreCase]);
-  Result := StringReplace(Result, '&#39;', '''', [rfReplaceAll]);
+  Result := DecodeNumericCharacterReferences(Result);
   Result := StringReplace(Result, '&amp;', '&', [rfReplaceAll, rfIgnoreCase]);
 end;
 

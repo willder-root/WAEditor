@@ -109,6 +109,15 @@ type
 
     [Test]
     procedure Parse_ImgWithoutDataUriSrc_IsIgnored;
+
+    [Test]
+    procedure Parse_AngleBracketEntities_ProduceLiteralAngleBrackets;
+
+    [Test]
+    procedure Parse_NumericCharacterReferences_DecimalAndHex_AreDecoded;
+
+    [Test]
+    procedure Parse_DoubleEncodedEntity_IsDecodedOnlyOnce;
   end;
 
 implementation
@@ -639,6 +648,46 @@ begin
     LParagraph := TWAParagraphBlock(LDocument.Blocks[0]);
     Assert.AreEqual(1, LParagraph.Runs.Count);
     Assert.AreEqual('text', LParagraph.Runs[0].Text);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_AngleBracketEntities_ProduceLiteralAngleBrackets;
+var
+  LDocument: TWARichDocument;
+begin
+  LDocument := TWAHtmlDocumentParser.Parse('<p>&lt;&lt;PACIENTE&gt;&gt;</p>');
+  try
+    Assert.AreEqual('<<PACIENTE>>', TWAParagraphBlock(LDocument.Blocks[0]).Runs[0].Text);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_NumericCharacterReferences_DecimalAndHex_AreDecoded;
+var
+  LDocument: TWARichDocument;
+begin
+  // &#60;/&#62; and &#x3C;/&#x3E; are '<' and '>': they used to pass
+  // through as the literal text "&#60;".
+  LDocument := TWAHtmlDocumentParser.Parse(
+    '<p>&#60;&#60;A&#62;&#62; &#x3C;&#x3c;B&#x3E;&#x3e; &#233;</p>');
+  try
+    Assert.AreEqual('<<A>> <<B>> ' + Char(233),
+      TWAParagraphBlock(LDocument.Blocks[0]).Runs[0].Text);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_DoubleEncodedEntity_IsDecodedOnlyOnce;
+var
+  LDocument: TWARichDocument;
+begin
+  LDocument := TWAHtmlDocumentParser.Parse('<p>&amp;lt; &#38;lt;</p>');
+  try
+    Assert.AreEqual('&lt; &lt;', TWAParagraphBlock(LDocument.Blocks[0]).Runs[0].Text);
   finally
     LDocument.Free;
   end;

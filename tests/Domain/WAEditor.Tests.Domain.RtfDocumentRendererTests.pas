@@ -74,6 +74,9 @@ type
 
     [Test]
     procedure Render_BmpImageRun_EmitsDibitmapWithoutFileHeader;
+
+    [Test]
+    procedure Render_AngleBracketsInText_AreKeptLiterally;
   end;
 
 implementation
@@ -510,6 +513,23 @@ begin
     Assert.IsFalse(LRtf.Contains('\pngblip'));
     Assert.IsFalse(LRtf.Contains(' 424D'));
     Assert.Contains(LRtf, ' 28000000');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentRendererTests.Render_AngleBracketsInText_AreKeptLiterally;
+var
+  LDocument: TWARichDocument;
+  LRtf: string;
+begin
+  // Merge-field style markers such as <<PACIENTE>> are plain printable
+  // ASCII in RTF and must reach the output untouched.
+  LDocument := TWARichDocument.Create;
+  try
+    LDocument.AddParagraph.AddRun('<<PACIENTE>>', TWARunFormat.Plain);
+    LRtf := TWARtfDocumentRenderer.Render(LDocument);
+    Assert.Contains(LRtf, '{<<PACIENTE>>}');
   finally
     LDocument.Free;
   end;
