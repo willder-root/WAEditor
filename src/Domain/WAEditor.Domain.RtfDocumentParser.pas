@@ -45,6 +45,11 @@ type
     FCurrentHasBorder: Boolean;
     FCurrentParagraph: TWAParagraphBlock;
     FCurrentTable: TWATableBlock;
+    // The table most recently closed, kept so that consecutive row groups
+    // (WPTools writes every row as its own {\trowd...\row} group inside
+    // one \tblstart/\tblend span) are merged back into a single table
+    // instead of becoming one table per row.
+    FLastTable: TWATableBlock;
     FCurrentRow: TWATableRow;
     FCurrentCell: TWATableCell;
     // A \par inside a cell is a paragraph boundary within it; the model
@@ -350,7 +355,7 @@ begin
     // by a preceding {\listtext...} group (real-world \lsN-based lists
     // carry their own list-item marker there; \fi-360 may still follow
     // it purely for indentation and must not create a duplicate item).
-    if AHasParam and (AParam < 0) and (FCurrentListItem = nil) then
+    if AHasParam and (AParam < 0) and (FCurrentListItem = nil) and (FCurrentCell = nil) then
     begin
       FListItemPending := True;
       FMarkerPending := True;
@@ -445,6 +450,17 @@ begin
     if AHasParam then
       FPendingCellxValues.Add(AParam);
   end
+  else if (AName = 'clbrdrl') or (AName = 'clbrdrr') or (AName = 'clbrdrt') or
+          (AName = 'clbrdrb') then
+  begin
+    // Any cell border at all makes the table bordered; \brdrw (below)
+    // refines the width, otherwise it is the default 1.
+    if (FCurrentTable <> nil) and (FCurrentRow <> nil) and (FCurrentCell = nil) and
+       (FCurrentTable.BorderWidth = 0) then
+      FCurrentTable.BorderWidth := 1;
+  end
+  else if AName = 'tblend' then
+    FLastTable := nil
   else if AName = 'brdrw' then
   begin
     // \brdrw appears between \trowd and the row's \cellx values (e.g.
@@ -644,8 +660,17 @@ end;
 
 procedure TWARtfParserState.ParseTableGroup;
 begin
-  FCurrentTable := TWATableBlock.Create(1);
-  FDocument.Blocks.Add(FCurrentTable);
+  if (FLastTable <> nil) and (FDocument.Blocks.Count > 0) and
+     (FDocument.Blocks.Last = FLastTable) then
+    FCurrentTable := FLastTable
+  else
+  begin
+    // RTF draws no table grid by itself: a table only has borders if
+    // its cells carry \clbrdr* (see HandleControlWord), so it starts
+    // borderless rather than assuming HTML's border="1".
+    FCurrentTable := TWATableBlock.Create(0);
+    FDocument.Blocks.Add(FCurrentTable);
+  end;
   while not AtEnd do
   begin
     case FRtf[FPos] of
@@ -664,6 +689,7 @@ begin
           Inc(FPos);
           FCurrentRow := nil;
           FCurrentCell := nil;
+          FLastTable := FCurrentTable;
           FCurrentTable := nil;
           Exit;
         end;

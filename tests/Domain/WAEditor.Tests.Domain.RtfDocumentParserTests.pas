@@ -94,7 +94,16 @@ type
     procedure Parse_RealWorldWPToolsCellBorders_SetTableBorderWidth;
 
     [Test]
-    procedure Parse_TableWithoutCellBorderControlWords_KeepsDefaultBorderWidth;
+    procedure Parse_TableWithoutCellBorderControlWords_IsBorderless;
+
+    [Test]
+    procedure Parse_CellBordersWithoutWidth_AreBorderedWithDefaultWidth;
+
+    [Test]
+    procedure Parse_WPToolsRowGroups_AreMergedIntoOneTable;
+
+    [Test]
+    procedure Parse_NegativeFirstLineIndentInsideCell_DoesNotStartAList;
 
     [Test]
     procedure Parse_SuperControlWord_SetsSuperscriptOnRunFormat;
@@ -632,7 +641,7 @@ begin
   end;
 end;
 
-procedure TWARtfDocumentParserTests.Parse_TableWithoutCellBorderControlWords_KeepsDefaultBorderWidth;
+procedure TWARtfDocumentParserTests.Parse_TableWithoutCellBorderControlWords_IsBorderless;
 var
   LDocument: TWARichDocument;
   LTable: TWATableBlock;
@@ -645,7 +654,70 @@ begin
     '}}');
   try
     LTable := TWATableBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(0, LTable.BorderWidth);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_CellBordersWithoutWidth_AreBorderedWithDefaultWidth;
+var
+  LDocument: TWARichDocument;
+begin
+  // WPTools marks a bordered cell with \clbrdrt\brdrs etc. and no
+  // \brdrw at all.
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 {' +
+    '\trowd\clbrdrt\brdrs\clbrdrl\brdrs\cellx2000' +
+    '\pard\intbl A\cell' +
+    '\row' +
+    '}}');
+  try
+    Assert.AreEqual(1, TWATableBlock(LDocument.Blocks[0]).BorderWidth);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_WPToolsRowGroups_AreMergedIntoOneTable;
+var
+  LDocument: TWARichDocument;
+  LTable: TWATableBlock;
+begin
+  // WPTools writes every row as its own {\trowd...\row} group inside one
+  // \tblstart/\tblend span; each used to become a separate table.
+  // \tblend then separates two genuinely distinct adjacent tables.
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 \tblstart1' +
+    '{\trowd\clbrdrt\brdrs\cellx2000\pard\intbl A\cell\row}' +
+    '{\trowd\clbrdrt\brdrs\cellx2000\pard\intbl B\cell\row}' +
+    '\tblend1\tblstart1' +
+    '{\trowd\cellx2000\pard\intbl C\cell\row}' +
+    '\tblend1}');
+  try
+    Assert.AreEqual(2, LDocument.Blocks.Count);
+    LTable := TWATableBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(2, LTable.Rows.Count);
     Assert.AreEqual(1, LTable.BorderWidth);
+    LTable := TWATableBlock(LDocument.Blocks[1]);
+    Assert.AreEqual(1, LTable.Rows.Count);
+    Assert.AreEqual(0, LTable.BorderWidth);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_NegativeFirstLineIndentInsideCell_DoesNotStartAList;
+var
+  LDocument: TWARichDocument;
+begin
+  // A hanging indent (\fi-3075) in a cell paragraph is just indentation;
+  // outside a cell it is this project's list-item marker.
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 {\trowd\cellx2000\pard\intbl\fi-3075 A\cell\row}}');
+  try
+    Assert.AreEqual(1, LDocument.Blocks.Count);
+    Assert.IsTrue(LDocument.Blocks[0] is TWATableBlock);
   finally
     LDocument.Free;
   end;
