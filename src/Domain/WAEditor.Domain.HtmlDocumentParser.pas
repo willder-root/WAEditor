@@ -29,6 +29,11 @@ uses
   WAEditor.Domain.FontSizeScale,
   WAEditor.Domain.ImageInfo;
 
+const
+  // Width of the text area a percentage table width is relative to:
+  // A4 (11906 twips) minus 2.54cm margins on both sides.
+  WA_TEXT_AREA_WIDTH_TWIPS = 9026;
+
 function DotDecimalFormatSettings: TFormatSettings;
 begin
   // CSS numbers always use '.' as the decimal separator regardless of
@@ -110,6 +115,7 @@ type
     FCurrentParagraph: TWAParagraphBlock;
     FCurrentTable: TWATableBlock;
     FCurrentRow: TWATableRow;
+    FCurrentTableWidthPercent: Double;
     FCurrentCell: TWATableCell;
     FCurrentList: TWAListBlock;
     FCurrentListItem: TWAListItem;
@@ -337,6 +343,60 @@ begin
     Exit; // malformed base64: treat as "no image" rather than propagate
   end;
   Result := True;
+end;
+
+function ExtractWidthPercent(const AAttributes: string): Double;
+// A table resized in a live WYSIWYG surface carries style="width: N%".
+// Returns 0 when there is no percentage width (absent, or in px).
+var
+  LStyle, LLowerStyle, LValueText: string;
+  LWidthPos, LColonPos, LSemiPos: Integer;
+begin
+  Result := 0;
+  LStyle := ExtractAttribute(AAttributes, 'style');
+  LLowerStyle := LowerCase(LStyle);
+  LWidthPos := FindStylePropertyPos(LLowerStyle, 'width');
+  if LWidthPos = 0 then
+    Exit;
+  LColonPos := PosEx(':', LStyle, LWidthPos);
+  if LColonPos = 0 then
+    Exit;
+  LSemiPos := PosEx(';', LStyle, LColonPos);
+  if LSemiPos = 0 then
+    LSemiPos := Length(LStyle) + 1;
+  LValueText := Trim(Copy(LStyle, LColonPos + 1, LSemiPos - LColonPos - 1));
+  if (LValueText = '') or (LValueText[Length(LValueText)] <> '%') then
+    Exit;
+  Delete(LValueText, Length(LValueText), 1);
+  if not TryStrToFloat(Trim(LValueText), Result, DotDecimalFormatSettings) then
+    Result := 0;
+end;
+
+procedure ScaleColumnWidthsToPercent(var AWidths: TArray<Integer>; APercent: Double);
+// A percentage width is relative to the container; in RTF that is the
+// page's text area. Column proportions are kept and the columns are
+// scaled so they sum to APercent of it (cumulative rounding, so the
+// total never drifts by a twip per column).
+var
+  LSum, I: Integer;
+  LTotal, LCumulativeSource: Double;
+  LPreviousEdge, LEdge: Integer;
+begin
+  LSum := 0;
+  for I := 0 to High(AWidths) do
+    Inc(LSum, AWidths[I]);
+  if (LSum <= 0) or (APercent <= 0) then
+    Exit;
+  LTotal := WA_TEXT_AREA_WIDTH_TWIPS * APercent / 100;
+  LCumulativeSource := 0;
+  LPreviousEdge := 0;
+  for I := 0 to High(AWidths) do
+  begin
+    LCumulativeSource := LCumulativeSource + AWidths[I];
+    LEdge := Round(LTotal * LCumulativeSource / LSum);
+    AWidths[I] := LEdge - LPreviousEdge;
+    LPreviousEdge := LEdge;
+  end;
 end;
 
 function ParseStyleFormat(const AStyle: string; ABase: TWARunFormat): TWARunFormat;
@@ -645,6 +705,7 @@ begin
     if not TryStrToInt(ExtractAttribute(AAttributes, 'border'), LBorder) then
       LBorder := 1;
     FCurrentTable := TWATableBlock.Create(LBorder);
+    FCurrentTableWidthPercent := ExtractWidthPercent(AAttributes);
     FDocument.Blocks.Add(FCurrentTable);
     FCurrentParagraph := nil;
   end
@@ -714,7 +775,10 @@ begin
     FCurrentRow := nil
   else if ATagName = 'table' then
   begin
+    if (FCurrentTable <> nil) and (FCurrentTableWidthPercent > 0) then
+      ScaleColumnWidthsToPercent(FCurrentTable.ColumnWidths, FCurrentTableWidthPercent);
     FCurrentTable := nil;
+    FCurrentTableWidthPercent := 0;
     FCurrentParagraph := nil;
   end
   else if ATagName = 'li' then

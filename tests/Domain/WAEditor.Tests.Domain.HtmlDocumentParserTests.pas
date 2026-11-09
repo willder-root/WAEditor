@@ -111,6 +111,12 @@ type
     procedure Parse_ImgWithoutDataUriSrc_IsIgnored;
 
     [Test]
+    procedure Parse_TablePercentWidth_ScalesColumnsKeepingProportions;
+
+    [Test]
+    procedure Parse_TablePixelStyleWidth_DoesNotRescaleColumns;
+
+    [Test]
     procedure Parse_AngleBracketEntities_ProduceLiteralAngleBrackets;
 
     [Test]
@@ -628,6 +634,42 @@ begin
     LRun := TWAParagraphBlock(LDocument.Blocks[0]).Runs[0];
     Assert.AreEqual(50, LRun.ImageWidthPx);
     Assert.AreEqual(25, LRun.ImageHeightPx);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_TablePercentWidth_ScalesColumnsKeepingProportions;
+var
+  LDocument: TWARichDocument;
+  LWidths: TArray<Integer>;
+begin
+  // The editor keeps the (stale) px col widths when a table is resized
+  // to a percentage; the percentage is what actually governs. 50% of the
+  // 9026-twip text area is 4513, split 1:2 like the columns.
+  LDocument := TWAHtmlDocumentParser.Parse(
+    '<table style="width: 50%;"><colgroup><col style="width:100px;">' +
+    '<col style="width:200px;"></colgroup><tr><td>A</td><td>B</td></tr></table>');
+  try
+    LWidths := TWATableBlock(LDocument.Blocks[0]).ColumnWidths;
+    Assert.AreEqual(2, Length(LWidths));
+    Assert.AreEqual(4513, LWidths[0] + LWidths[1]);
+    Assert.IsTrue(Abs(LWidths[1] - 2 * LWidths[0]) <= 1);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_TablePixelStyleWidth_DoesNotRescaleColumns;
+var
+  LDocument: TWARichDocument;
+begin
+  LDocument := TWAHtmlDocumentParser.Parse(
+    '<table style="width: 300px;"><colgroup><col style="width:100px;">' +
+    '<col style="width:200px;"></colgroup><tr><td>A</td><td>B</td></tr></table>');
+  try
+    Assert.AreEqual(1500, TWATableBlock(LDocument.Blocks[0]).ColumnWidths[0]);
+    Assert.AreEqual(3000, TWATableBlock(LDocument.Blocks[0]).ColumnWidths[1]);
   finally
     LDocument.Free;
   end;
