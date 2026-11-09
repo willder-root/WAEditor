@@ -116,6 +116,7 @@ type
     FCurrentTable: TWATableBlock;
     FCurrentRow: TWATableRow;
     FCurrentTableWidthPercent: Double;
+    FCurrentTableWidthPx: Double;
     FCurrentCell: TWATableCell;
     FCurrentList: TWAListBlock;
     FCurrentListItem: TWAListItem;
@@ -345,9 +346,10 @@ begin
   Result := True;
 end;
 
-function ExtractWidthPercent(const AAttributes: string): Double;
-// A table resized in a live WYSIWYG surface carries style="width: N%".
-// Returns 0 when there is no percentage width (absent, or in px).
+function ExtractStyleWidthNumber(const AAttributes, AUnit: string): Double;
+// A table resized in a live WYSIWYG surface carries style="width: N%" (or
+// "width: Npx"). Returns N when the style's width is in AUnit ('%' or
+// 'px'), 0 when there is no width or it is in another unit.
 var
   LStyle, LLowerStyle, LValueText: string;
   LWidthPos, LColonPos, LSemiPos: Integer;
@@ -364,19 +366,30 @@ begin
   LSemiPos := PosEx(';', LStyle, LColonPos);
   if LSemiPos = 0 then
     LSemiPos := Length(LStyle) + 1;
-  LValueText := Trim(Copy(LStyle, LColonPos + 1, LSemiPos - LColonPos - 1));
-  if (LValueText = '') or (LValueText[Length(LValueText)] <> '%') then
+  LValueText := LowerCase(Trim(Copy(LStyle, LColonPos + 1, LSemiPos - LColonPos - 1)));
+  if (LValueText = '') or (not LValueText.EndsWith(AUnit)) then
     Exit;
-  Delete(LValueText, Length(LValueText), 1);
+  Delete(LValueText, Length(LValueText) - Length(AUnit) + 1, Length(AUnit));
   if not TryStrToFloat(Trim(LValueText), Result, DotDecimalFormatSettings) then
     Result := 0;
 end;
 
-procedure ScaleColumnWidthsToPercent(var AWidths: TArray<Integer>; APercent: Double);
-// A percentage width is relative to the container; in RTF that is the
-// page's text area. Column proportions are kept and the columns are
-// scaled so they sum to APercent of it (cumulative rounding, so the
-// total never drifts by a twip per column).
+function ExtractWidthPercent(const AAttributes: string): Double;
+begin
+  Result := ExtractStyleWidthNumber(AAttributes, '%');
+end;
+
+function ExtractWidthPx(const AAttributes: string): Double;
+begin
+  Result := ExtractStyleWidthNumber(AAttributes, 'px');
+end;
+
+procedure ScaleColumnWidthsToTotal(var AWidths: TArray<Integer>; ATotalTwips: Double);
+// An explicit table width (a percentage of the page's text area, or an
+// absolute px width) governs over the stale <col> widths a live WYSIWYG
+// surface keeps. Column proportions are kept and the columns are scaled
+// so they sum to ATotalTwips (cumulative rounding, so the total never
+// drifts by a twip per column).
 var
   LSum, I: Integer;
   LTotal, LCumulativeSource: Double;
@@ -385,9 +398,9 @@ begin
   LSum := 0;
   for I := 0 to High(AWidths) do
     Inc(LSum, AWidths[I]);
-  if (LSum <= 0) or (APercent <= 0) then
+  if (LSum <= 0) or (ATotalTwips <= 0) then
     Exit;
-  LTotal := WA_TEXT_AREA_WIDTH_TWIPS * APercent / 100;
+  LTotal := ATotalTwips;
   LCumulativeSource := 0;
   LPreviousEdge := 0;
   for I := 0 to High(AWidths) do
@@ -706,6 +719,7 @@ begin
       LBorder := 1;
     FCurrentTable := TWATableBlock.Create(LBorder);
     FCurrentTableWidthPercent := ExtractWidthPercent(AAttributes);
+    FCurrentTableWidthPx := ExtractWidthPx(AAttributes);
     FDocument.Blocks.Add(FCurrentTable);
     FCurrentParagraph := nil;
   end
@@ -743,6 +757,7 @@ begin
         end;
       end;
       FCurrentCell := FCurrentRow.AddCell;
+      FCurrentCell.Alignment := ParseAlignmentAttribute(AAttributes, taLeftAlign);
     end;
   end
   else if (ATagName = 'ul') or (ATagName = 'ol') then
@@ -775,10 +790,17 @@ begin
     FCurrentRow := nil
   else if ATagName = 'table' then
   begin
-    if (FCurrentTable <> nil) and (FCurrentTableWidthPercent > 0) then
-      ScaleColumnWidthsToPercent(FCurrentTable.ColumnWidths, FCurrentTableWidthPercent);
+    if FCurrentTable <> nil then
+    begin
+      if FCurrentTableWidthPercent > 0 then
+        ScaleColumnWidthsToTotal(FCurrentTable.ColumnWidths,
+          WA_TEXT_AREA_WIDTH_TWIPS * FCurrentTableWidthPercent / 100)
+      else if FCurrentTableWidthPx > 0 then
+        ScaleColumnWidthsToTotal(FCurrentTable.ColumnWidths, FCurrentTableWidthPx * 15);
+    end;
     FCurrentTable := nil;
     FCurrentTableWidthPercent := 0;
+    FCurrentTableWidthPx := 0;
     FCurrentParagraph := nil;
   end
   else if ATagName = 'li' then

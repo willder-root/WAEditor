@@ -115,6 +115,10 @@ type
 
     [Test]
     procedure Parse_TablePixelStyleWidth_DoesNotRescaleColumns;
+    [Test]
+    procedure Parse_TablePixelStyleWidthSmallerThanColumns_ScalesColumnsKeepingProportions;
+    [Test]
+    procedure Parse_TableCellTextAlign_IsKept;
 
     [Test]
     procedure Parse_AngleBracketEntities_ProduceLiteralAngleBrackets;
@@ -670,6 +674,46 @@ begin
   try
     Assert.AreEqual(1500, TWATableBlock(LDocument.Blocks[0]).ColumnWidths[0]);
     Assert.AreEqual(3000, TWATableBlock(LDocument.Blocks[0]).ColumnWidths[1]);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_TablePixelStyleWidthSmallerThanColumns_ScalesColumnsKeepingProportions;
+var
+  LDocument: TWARichDocument;
+  LWidths: TArray<Integer>;
+begin
+  // Reported case: style="width: 120px" with four stale 188px <col>s. The
+  // table is 120px wide (1800 twips), columns equal, not 4 x 188px.
+  LDocument := TWAHtmlDocumentParser.Parse(
+    '<table style="width: 120px; height: 71px;"><colgroup>' +
+    '<col style="width:188px;"><col style="width:188px;">' +
+    '<col style="width:188px;"><col style="width:188px;"></colgroup>' +
+    '<tr><td>A</td><td>B</td><td>C</td><td>D</td></tr></table>');
+  try
+    LWidths := TWATableBlock(LDocument.Blocks[0]).ColumnWidths;
+    Assert.AreEqual(4, Length(LWidths));
+    Assert.AreEqual(1800, LWidths[0] + LWidths[1] + LWidths[2] + LWidths[3]);
+    Assert.AreEqual(450, LWidths[0]);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_TableCellTextAlign_IsKept;
+var
+  LDocument: TWARichDocument;
+  LRow: TWATableRow;
+begin
+  LDocument := TWAHtmlDocumentParser.Parse(
+    '<table><tr><td style="text-align: center;">A</td>' +
+    '<td style="text-align: right;">B</td><td>C</td></tr></table>');
+  try
+    LRow := TWATableBlock(LDocument.Blocks[0]).Rows[0];
+    Assert.AreEqual(Ord(taCenterAlign), Ord(LRow.Cells[0].Alignment));
+    Assert.AreEqual(Ord(taRightAlign), Ord(LRow.Cells[1].Alignment));
+    Assert.AreEqual(Ord(taLeftAlign), Ord(LRow.Cells[2].Alignment));
   finally
     LDocument.Free;
   end;

@@ -483,6 +483,8 @@ begin
   end
   else if AName = 'cell' then
   begin
+    if FCurrentCell <> nil then
+      FCurrentCell.Alignment := FCurrentAlignment;
     FCurrentCell := nil;
     FCellParagraphBreakPending := False;
   end

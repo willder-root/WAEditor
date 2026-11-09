@@ -95,6 +95,8 @@ type
 
     [Test]
     procedure Parse_TableWithoutCellBorderControlWords_IsBorderless;
+    [Test]
+    procedure Parse_TableCellAlignment_IsKeptPerCell;
 
     [Test]
     procedure Parse_CellBordersWithoutWidth_AreBorderedWithDefaultWidth;
@@ -636,6 +638,26 @@ begin
   try
     LTable := TWATableBlock(LDocument.Blocks[0]);
     Assert.AreEqual(1, LTable.BorderWidth);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_TableCellAlignment_IsKeptPerCell;
+var
+  LDocument: TWARichDocument;
+  LRow: TWATableRow;
+begin
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 {' +
+    '\trowd\cellx1000\cellx2000\cellx3000' +
+    '\pard\intbl\qc {A}\cell\pard\intbl\qr {B}\cell\pard\intbl {C}\cell\row}}');
+  try
+    LRow := TWATableBlock(LDocument.Blocks[0]).Rows[0];
+    Assert.AreEqual(3, LRow.Cells.Count);
+    Assert.AreEqual(Ord(taCenterAlign), Ord(LRow.Cells[0].Alignment));
+    Assert.AreEqual(Ord(taRightAlign), Ord(LRow.Cells[1].Alignment));
+    Assert.AreEqual(Ord(taLeftAlign), Ord(LRow.Cells[2].Alignment));
   finally
     LDocument.Free;
   end;

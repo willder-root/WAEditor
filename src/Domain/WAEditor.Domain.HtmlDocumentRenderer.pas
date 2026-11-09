@@ -159,13 +159,16 @@ begin
       for I := 0 to LRow.Cells.Count - 1 do
       begin
         LCell := LRow.Cells[I];
+        LBuilder.Append('<td');
         if (I < Length(ATable.ColumnWidths)) and (ATable.ColumnWidths[I] > 0) then
         begin
           LColumnWidthPx := ATable.ColumnWidths[I] div 15;
-          LBuilder.AppendFormat('<td colwidth="%d">', [LColumnWidthPx]);
-        end
-        else
-          LBuilder.Append('<td>');
+          LBuilder.AppendFormat(' colwidth="%d"', [LColumnWidthPx]);
+        end;
+        if LCell.Alignment <> taLeftAlign then
+          LBuilder.AppendFormat(' style="text-align: %s;"',
+            [TWAAlignmentMapper.ToHtmlAttribute(LCell.Alignment)]);
+        LBuilder.Append('>');
         for LRun in LCell.Runs do
           LBuilder.Append(RenderRun(LRun));
         if LCell.Runs.Count = 0 then

@@ -359,7 +359,12 @@ begin
       LBuilder.Append(sLineBreak);
       for LCell in LRow.Cells do
       begin
-        LBuilder.Append('\pard\intbl ');
+        // Left is RTF's default for a cell paragraph, so only the other
+        // alignments need an explicit word.
+        LBuilder.Append('\pard\intbl');
+        if LCell.Alignment <> taLeftAlign then
+          LBuilder.Append(AlignmentControlWord(LCell.Alignment));
+        LBuilder.Append(' ');
         for LRun in LCell.Runs do
           LBuilder.Append(RenderRunGroup(LRun, AFontTable));
         LBuilder.Append('\cell').Append(sLineBreak);

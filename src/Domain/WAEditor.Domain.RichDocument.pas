@@ -93,6 +93,9 @@ type
 
   TWATableCell = class
   public
+    // Horizontal alignment of the cell's content (HTML text-align on the
+    // <td>, RTF \ql/\qc/\qr/\qj on the cell's paragraph).
+    Alignment: TWATextAlignment;
     Runs: TObjectList<TWARun>;
     constructor Create;
     destructor Destroy; override;
@@ -240,6 +243,7 @@ end;
 constructor TWATableCell.Create;
 begin
   inherited Create;
+  Alignment := taLeftAlign;
   Runs := TObjectList<TWARun>.Create(True);
 end;
 

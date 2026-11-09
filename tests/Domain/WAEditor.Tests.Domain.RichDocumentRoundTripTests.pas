@@ -44,6 +44,8 @@ type
 
     [Test]
     procedure HtmlToRtfToHtml_PreservesImage;
+    [Test]
+    procedure HtmlToRtfToHtml_PreservesTableCellAlignmentAndPixelWidth;
   end;
 
 implementation
@@ -373,6 +375,40 @@ begin
 
   Assert.Contains(LRtf2, 'FORMCHECKBOX _Check=true');
   Assert.Contains(LRtf2, 'FORMCHECKBOX _Radio=off');
+end;
+
+procedure TWARichDocumentRoundTripTests.HtmlToRtfToHtml_PreservesTableCellAlignmentAndPixelWidth;
+var
+  LFromHtml, LFromRtf: TWARichDocument;
+  LRtf, LHtmlAgain: string;
+begin
+  // Reported case: the cells' text-align (center / right) was lost, and a
+  // table with style="width: 120px" came out 4 x 188px wide.
+  LFromHtml := TWAHtmlDocumentParser.Parse(
+    '<table border="0" style="width: 120px;"><colgroup><col style="width:188px;">' +
+    '<col style="width:188px;"></colgroup><tbody><tr>' +
+    '<td colwidth="188" style="text-align: center;">w1</td>' +
+    '<td colwidth="188" style="text-align: right;">w2</td></tr></tbody></table>');
+  try
+    LRtf := TWARtfDocumentRenderer.Render(LFromHtml);
+  finally
+    LFromHtml.Free;
+  end;
+
+  Assert.Contains(LRtf, '\cellx900\cellx1800');
+  Assert.Contains(LRtf, '\pard\intbl\qc ');
+  Assert.Contains(LRtf, '\pard\intbl\qr ');
+
+  LFromRtf := TWARtfDocumentParser.Parse(LRtf);
+  try
+    LHtmlAgain := TWAHtmlDocumentRenderer.Render(LFromRtf);
+  finally
+    LFromRtf.Free;
+  end;
+
+  Assert.Contains(LHtmlAgain, 'text-align: center;');
+  Assert.Contains(LHtmlAgain, 'text-align: right;');
+  Assert.Contains(LHtmlAgain, 'width:60px;');
 end;
 
 procedure TWARichDocumentRoundTripTests.HtmlToRtfToHtml_PreservesImage;
