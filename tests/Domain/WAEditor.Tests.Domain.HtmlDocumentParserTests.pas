@@ -119,6 +119,8 @@ type
     procedure Parse_TablePixelStyleWidthSmallerThanColumns_ScalesColumnsKeepingProportions;
     [Test]
     procedure Parse_TableCellTextAlign_IsKept;
+    [Test]
+    procedure Parse_TableWithBorderZero_IsStillBordered;
 
     [Test]
     procedure Parse_AngleBracketEntities_ProduceLiteralAngleBrackets;
@@ -714,6 +716,21 @@ begin
     Assert.AreEqual(Ord(taCenterAlign), Ord(LRow.Cells[0].Alignment));
     Assert.AreEqual(Ord(taRightAlign), Ord(LRow.Cells[1].Alignment));
     Assert.AreEqual(Ord(taLeftAlign), Ord(LRow.Cells[2].Alignment));
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_TableWithBorderZero_IsStillBordered;
+var
+  LDocument: TWARichDocument;
+begin
+  // The editor draws borders via CSS regardless of border="0", so the
+  // user sees (and expects in RTF) a bordered table.
+  LDocument := TWAHtmlDocumentParser.Parse(
+    '<table border="0"><tr><td>A</td></tr></table>');
+  try
+    Assert.AreEqual(1, TWATableBlock(LDocument.Blocks[0]).BorderWidth);
   finally
     LDocument.Free;
   end;

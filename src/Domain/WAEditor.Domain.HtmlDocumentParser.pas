@@ -717,7 +717,12 @@ begin
   begin
     if not TryStrToInt(ExtractAttribute(AAttributes, 'border'), LBorder) then
       LBorder := 1;
-    FCurrentTable := TWATableBlock.Create(LBorder);
+    // The live editor draws a grid on every table through its own CSS,
+    // even when the HTML says border="0", so what the user sees is a
+    // bordered table; keep that in the model (and thus in RTF).
+    if LBorder < 1 then
+      LBorder := 1;
+    FCurrentTable :=TWATableBlock.Create(LBorder);
     FCurrentTableWidthPercent := ExtractWidthPercent(AAttributes);
     FCurrentTableWidthPx := ExtractWidthPx(AAttributes);
     FDocument.Blocks.Add(FCurrentTable);

@@ -395,7 +395,8 @@ begin
     LFromHtml.Free;
   end;
 
-  Assert.Contains(LRtf, '\cellx900\cellx1800');
+  Assert.Contains(LRtf, '\cellx900');
+  Assert.Contains(LRtf, '\cellx1800');
   Assert.Contains(LRtf, '\pard\intbl\qc ');
   Assert.Contains(LRtf, '\pard\intbl\qr ');
 
