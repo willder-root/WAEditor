@@ -116,6 +116,14 @@ begin
     LBuilder.Append('<p style="margin:0;');
     if AParagraph.HasBorder then
       LBuilder.Append('border:1px solid #000000;padding:2px;');
+    // Indents are written in px (15 twips each) after margin:0 so they
+    // override it; omitted when zero to keep the common case unchanged.
+    if AParagraph.LeftIndentTwips <> 0 then
+      LBuilder.AppendFormat('margin-left:%dpx;', [Round(AParagraph.LeftIndentTwips / 15)]);
+    if AParagraph.RightIndentTwips <> 0 then
+      LBuilder.AppendFormat('margin-right:%dpx;', [Round(AParagraph.RightIndentTwips / 15)]);
+    if AParagraph.FirstLineIndentTwips <> 0 then
+      LBuilder.AppendFormat('text-indent:%dpx;', [Round(AParagraph.FirstLineIndentTwips / 15)]);
     LBuilder.AppendFormat('text-align:%s;">',
       [TWAAlignmentMapper.ToHtmlAttribute(AParagraph.Alignment)]);
     for LRun in AParagraph.Runs do

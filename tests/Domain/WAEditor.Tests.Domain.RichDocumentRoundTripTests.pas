@@ -46,6 +46,8 @@ type
     procedure HtmlToRtfToHtml_PreservesImage;
     [Test]
     procedure HtmlToRtfToHtml_PreservesTableCellAlignmentAndPixelWidth;
+    [Test]
+    procedure HtmlToRtfToHtml_PreservesParagraphIndents;
   end;
 
 implementation
@@ -375,6 +377,38 @@ begin
 
   Assert.Contains(LRtf2, 'FORMCHECKBOX _Check=true');
   Assert.Contains(LRtf2, 'FORMCHECKBOX _Radio=off');
+end;
+
+procedure TWARichDocumentRoundTripTests.HtmlToRtfToHtml_PreservesParagraphIndents;
+var
+  LFromHtml, LFromRtf: TWARichDocument;
+  LRtf, LHtmlAgain: string;
+begin
+  LFromHtml := TWAHtmlDocumentParser.Parse(
+    '<p style="margin-left: 2cm; margin-right: 20px; text-indent: 30px;">indented</p>' +
+    '<p>plain</p>');
+  try
+    LRtf := TWARtfDocumentRenderer.Render(LFromHtml);
+  finally
+    LFromHtml.Free;
+  end;
+
+  Assert.Contains(LRtf, '\li1134');
+  Assert.Contains(LRtf, '\ri300');
+  Assert.Contains(LRtf, '\fi450');
+
+  LFromRtf := TWARtfDocumentParser.Parse(LRtf);
+  try
+    LHtmlAgain := TWAHtmlDocumentRenderer.Render(LFromRtf);
+  finally
+    LFromRtf.Free;
+  end;
+
+  Assert.Contains(LHtmlAgain, 'margin-left:76px;'); // 1134 twips = 75.6px
+  Assert.Contains(LHtmlAgain, 'margin-right:20px;');
+  Assert.Contains(LHtmlAgain, 'text-indent:30px;');
+  // The second paragraph must not inherit the first one's indents.
+  Assert.AreEqual(1, Length(LHtmlAgain.Split(['margin-left'])) - 1);
 end;
 
 procedure TWARichDocumentRoundTripTests.HtmlToRtfToHtml_PreservesTableCellAlignmentAndPixelWidth;

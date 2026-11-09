@@ -296,6 +296,16 @@ begin
   LBuilder := TStringBuilder.Create;
   try
     LBuilder.Append('\pard').Append(AlignmentControlWord(AParagraph.Alignment));
+    if AParagraph.LeftIndentTwips <> 0 then
+      LBuilder.AppendFormat('\li%d', [AParagraph.LeftIndentTwips]);
+    if AParagraph.RightIndentTwips <> 0 then
+      LBuilder.AppendFormat('\ri%d', [AParagraph.RightIndentTwips]);
+    // A negative \fi (hanging indent) is this project's list-item
+    // signature (\fi-360 + marker), so a hanging indent on a plain
+    // paragraph is deliberately not written: the reader would take the
+    // paragraph for a list item and swallow its text as a marker.
+    if AParagraph.FirstLineIndentTwips > 0 then
+      LBuilder.AppendFormat('\fi%d', [AParagraph.FirstLineIndentTwips]);
     if AParagraph.HasBorder then
       LBuilder.Append('\brdrl\brdrs\brdrr\brdrs\brdrt\brdrs\brdrb\brdrs');
     LBuilder.Append(' ');

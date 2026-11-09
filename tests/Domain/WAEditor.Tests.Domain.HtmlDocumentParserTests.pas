@@ -121,6 +121,26 @@ type
     procedure Parse_TableCellTextAlign_IsKept;
     [Test]
     procedure Parse_TableWithBorderZero_IsStillBordered;
+    [Test]
+    [TestCase('Px', 'margin-left: 40px,600')]
+    [TestCase('Pt', 'margin-left: 30pt,600')]
+    [TestCase('Cm', 'margin-left: 1cm,567')]
+    [TestCase('Mm', 'margin-left: 10mm,567')]
+    [TestCase('In', 'margin-left: 0.5in,720')]
+    [TestCase('Pc', 'margin-left: 3pc,720')]
+    [TestCase('Em', 'margin-left: 2em,480')]
+    [TestCase('Percent', 'margin-left: 10%,903')]
+    [TestCase('Padding', 'padding-left: 20px,300')]
+    [TestCase('MarginPlusPadding', 'margin-left: 20px; padding-left: 20px,600')]
+    [TestCase('ShorthandFour', 'margin: 1px 2px 3px 40px,600')]
+    [TestCase('ShorthandTwo', 'margin: 0 40px,600')]
+    [TestCase('Important', 'margin-left: 40px !important,600')]
+    [TestCase('AutoIgnored', 'margin-left: auto,0')]
+    [TestCase('ZeroUnitless', 'margin-left: 0,0')]
+    procedure Parse_ParagraphLeftIndentUnits_ConvertToTwips(const AStyle: string;
+      AExpectedTwips: Integer);
+    [Test]
+    procedure Parse_ParagraphRightIndentAndTextIndent_AreRead;
 
     [Test]
     procedure Parse_AngleBracketEntities_ProduceLiteralAngleBrackets;
@@ -731,6 +751,37 @@ begin
     '<table border="0"><tr><td>A</td></tr></table>');
   try
     Assert.AreEqual(1, TWATableBlock(LDocument.Blocks[0]).BorderWidth);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_ParagraphLeftIndentUnits_ConvertToTwips(
+  const AStyle: string; AExpectedTwips: Integer);
+var
+  LDocument: TWARichDocument;
+begin
+  LDocument := TWAHtmlDocumentParser.Parse(
+    '<p style="' + AStyle + '">text</p>');
+  try
+    Assert.AreEqual(AExpectedTwips, TWAParagraphBlock(LDocument.Blocks[0]).LeftIndentTwips);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_ParagraphRightIndentAndTextIndent_AreRead;
+var
+  LDocument: TWARichDocument;
+  LParagraph: TWAParagraphBlock;
+begin
+  LDocument := TWAHtmlDocumentParser.Parse(
+    '<p style="margin-right: 1cm; text-indent: 2em;">text</p>');
+  try
+    LParagraph := TWAParagraphBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(567, LParagraph.RightIndentTwips);
+    Assert.AreEqual(480, LParagraph.FirstLineIndentTwips);
+    Assert.AreEqual(0, LParagraph.LeftIndentTwips);
   finally
     LDocument.Free;
   end;

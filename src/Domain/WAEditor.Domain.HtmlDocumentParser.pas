@@ -462,6 +462,138 @@ begin
   end;
 end;
 
+function TryCssLengthToTwips(const AValue: string; out ATwips: Integer): Boolean;
+// Converts any absolute or relative CSS length (px, pt, pc, in, cm, mm, q,
+// em, rem, ex, ch, %) to twips, RTF's native unit. A unitless value is
+// only valid for 0, as in CSS. "auto", calc() and viewport units have no
+// fixed meaning in a paragraph indent and return False.
+var
+  LValue, LNumberPart, LUnit: string;
+  LNumber, LBaseTwips: Double;
+  I: Integer;
+begin
+  Result := False;
+  ATwips := 0;
+  LValue := Trim(AValue);
+  I := 1;
+  if (I <= Length(LValue)) and CharInSet(LValue[I], ['+', '-']) then
+    Inc(I);
+  while (I <= Length(LValue)) and CharInSet(LValue[I], ['0'..'9', '.']) do
+    Inc(I);
+  LNumberPart := Copy(LValue, 1, I - 1);
+  LUnit := LowerCase(Trim(Copy(LValue, I, MaxInt)));
+  if not TryStrToFloat(LNumberPart, LNumber, DotDecimalFormatSettings) then
+    Exit;
+  LBaseTwips := WA_DEFAULT_BROWSER_FONT_SIZE_PT * 20;
+  Result := True;
+  if LUnit = '' then
+    Result := LNumber = 0
+  else if LUnit = 'px' then
+    ATwips := Round(LNumber * 15)
+  else if LUnit = 'pt' then
+    ATwips := Round(LNumber * 20)
+  else if LUnit = 'pc' then
+    ATwips := Round(LNumber * 240)
+  else if LUnit = 'in' then
+    ATwips := Round(LNumber * 1440)
+  else if LUnit = 'cm' then
+    ATwips := Round(LNumber * 1440 / 2.54)
+  else if LUnit = 'mm' then
+    ATwips := Round(LNumber * 1440 / 25.4)
+  else if LUnit = 'q' then
+    ATwips := Round(LNumber * 1440 / 101.6)
+  else if (LUnit = 'em') or (LUnit = 'rem') then
+    ATwips := Round(LNumber * LBaseTwips)
+  else if (LUnit = 'ex') or (LUnit = 'ch') then
+    ATwips := Round(LNumber * LBaseTwips / 2)
+  else if LUnit = '%' then
+    ATwips := Round(LNumber * WA_TEXT_AREA_WIDTH_TWIPS / 100)
+  else
+    Result := False;
+end;
+
+procedure ParseParagraphIndents(const AAttributes: string;
+  out ALeft, ARight, AFirstLine: Integer);
+// Reads a paragraph's indentation from its inline style: margin-left /
+// margin-right / padding-left / padding-right (and the margin and padding
+// shorthands with 1 to 4 values, applied in declaration order like CSS)
+// plus text-indent. The left/right indent is margin + padding, in twips.
+var
+  LDeclarations, LTokens: TArray<string>;
+  LDeclaration, LName, LValue: string;
+  LColonPos, LBangPos, LTwips: Integer;
+  LMarginLeft, LMarginRight, LPaddingLeft, LPaddingRight: Integer;
+
+  function Convert(const AText: string): Integer;
+  begin
+    if not TryCssLengthToTwips(AText, Result) then
+      Result := 0;
+  end;
+
+  procedure ApplyShorthand(var ALeftSide, ARightSide: Integer);
+  var
+    LRightIndex, LLeftIndex: Integer;
+  begin
+    LTokens := LValue.Split([' '], TStringSplitOptions.ExcludeEmpty);
+    if Length(LTokens) = 0 then
+      Exit;
+    // 1 value: all sides; 2: vertical horizontal; 3: top horizontal
+    // bottom; 4: top right bottom left.
+    if Length(LTokens) >= 2 then
+      LRightIndex := 1
+    else
+      LRightIndex := 0;
+    if Length(LTokens) = 4 then
+      LLeftIndex := 3
+    else
+      LLeftIndex := LRightIndex;
+    ALeftSide := Convert(LTokens[LLeftIndex]);
+    ARightSide := Convert(LTokens[LRightIndex]);
+  end;
+
+begin
+  ALeft := 0;
+  ARight := 0;
+  AFirstLine := 0;
+  LMarginLeft := 0;
+  LMarginRight := 0;
+  LPaddingLeft := 0;
+  LPaddingRight := 0;
+  LDeclarations := DecodeHtmlEntities(ExtractAttribute(AAttributes, 'style')).Split([';']);
+  for LDeclaration in LDeclarations do
+  begin
+    LColonPos := Pos(':', LDeclaration);
+    if LColonPos = 0 then
+      Continue;
+    LName := LowerCase(Trim(Copy(LDeclaration, 1, LColonPos - 1)));
+    LValue := Trim(Copy(LDeclaration, LColonPos + 1, MaxInt));
+    LBangPos := Pos('!', LValue);
+    if LBangPos > 0 then
+      LValue := Trim(Copy(LValue, 1, LBangPos - 1));
+    if LName = 'margin' then
+      ApplyShorthand(LMarginLeft, LMarginRight)
+    else if LName = 'padding' then
+      ApplyShorthand(LPaddingLeft, LPaddingRight)
+    else if (LName = 'margin-left') or (LName = 'margin-inline-start') then
+      LMarginLeft := Convert(LValue)
+    else if (LName = 'margin-right') or (LName = 'margin-inline-end') then
+      LMarginRight := Convert(LValue)
+    else if (LName = 'padding-left') or (LName = 'padding-inline-start') then
+      LPaddingLeft := Convert(LValue)
+    else if (LName = 'padding-right') or (LName = 'padding-inline-end') then
+      LPaddingRight := Convert(LValue)
+    else if LName = 'text-indent' then
+    begin
+      // "text-indent: 2em each-line" etc.: only the length matters.
+      LTokens := LValue.Split([' '], TStringSplitOptions.ExcludeEmpty);
+      if (Length(LTokens) > 0) and TryCssLengthToTwips(LTokens[0], LTwips) then
+        AFirstLine := LTwips;
+    end;
+  end;
+  ALeft := LMarginLeft + LPaddingLeft;
+  ARight := LMarginRight + LPaddingRight;
+end;
+
 function ParseAlignmentAttribute(const AAttributes: string; ADefault: TWATextAlignment): TWATextAlignment;
 var
   LAlign, LStyle: string;
@@ -666,6 +798,8 @@ begin
       FCurrentParagraph := FDocument.AddParagraph(ParseAlignmentAttribute(AAttributes, taLeftAlign));
       FCurrentParagraph.HasBorder :=
         Pos('border', LowerCase(ExtractAttribute(AAttributes, 'style'))) > 0;
+      ParseParagraphIndents(AAttributes, FCurrentParagraph.LeftIndentTwips,
+        FCurrentParagraph.RightIndentTwips, FCurrentParagraph.FirstLineIndentTwips);
     end;
   end
   else if ATagName = 'br' then

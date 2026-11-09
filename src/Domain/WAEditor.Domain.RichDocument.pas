@@ -85,6 +85,12 @@ type
     // presence, style, width or color, only whether the paragraph is
     // boxed at all.
     HasBorder: Boolean;
+    // Paragraph indentation in twips (RTF's native unit): left/right edge
+    // (HTML margin/padding-left/right, RTF \li/\ri) and the first line's
+    // extra offset (HTML text-indent, RTF \fi; negative = hanging).
+    LeftIndentTwips: Integer;
+    RightIndentTwips: Integer;
+    FirstLineIndentTwips: Integer;
     Runs: TObjectList<TWARun>;
     constructor Create(AAlignment: TWATextAlignment = taLeftAlign);
     destructor Destroy; override;

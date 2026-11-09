@@ -43,6 +43,9 @@ type
     FCurrentFormat: TWARunFormat;
     FCurrentAlignment: TWATextAlignment;
     FCurrentHasBorder: Boolean;
+    FCurrentLeftIndent: Integer;
+    FCurrentRightIndent: Integer;
+    FCurrentFirstLineIndent: Integer;
     FCurrentParagraph: TWAParagraphBlock;
     FCurrentTable: TWATableBlock;
     // The table most recently closed, kept so that consecutive row groups
@@ -209,6 +212,9 @@ begin
   begin
     FCurrentParagraph := FDocument.AddParagraph(FCurrentAlignment);
     FCurrentParagraph.HasBorder := FCurrentHasBorder;
+    FCurrentParagraph.LeftIndentTwips := FCurrentLeftIndent;
+    FCurrentParagraph.RightIndentTwips := FCurrentRightIndent;
+    FCurrentParagraph.FirstLineIndentTwips := FCurrentFirstLineIndent;
   end;
 end;
 
@@ -345,12 +351,27 @@ begin
   begin
     FCurrentAlignment := taLeftAlign;
     FCurrentHasBorder := False;
+    FCurrentLeftIndent := 0;
+    FCurrentRightIndent := 0;
+    FCurrentFirstLineIndent := 0;
     FListItemPending := False;
+  end
+  else if AName = 'li' then
+  begin
+    if AHasParam then
+      FCurrentLeftIndent := AParam;
+  end
+  else if AName = 'ri' then
+  begin
+    if AHasParam then
+      FCurrentRightIndent := AParam;
   end
   else if (AName = 'brdrl') or (AName = 'brdrr') or (AName = 'brdrt') or (AName = 'brdrb') then
     FCurrentHasBorder := True
   else if AName = 'fi' then
   begin
+    if AHasParam and (AParam >= 0) then
+      FCurrentFirstLineIndent := AParam;
     // Only start a new item this way when one hasn't already been opened
     // by a preceding {\listtext...} group (real-world \lsN-based lists
     // carry their own list-item marker there; \fi-360 may still follow
