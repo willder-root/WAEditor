@@ -120,7 +120,7 @@ type
     [Test]
     procedure Parse_TableCellTextAlign_IsKept;
     [Test]
-    procedure Parse_TableWithBorderZero_IsStillBordered;
+    procedure Parse_TableWithBorderZero_IsBorderless;
     [Test]
     [TestCase('Px', 'margin-left: 40px,600')]
     [TestCase('Pt', 'margin-left: 30pt,600')]
@@ -741,16 +741,16 @@ begin
   end;
 end;
 
-procedure TWAHtmlDocumentParserTests.Parse_TableWithBorderZero_IsStillBordered;
+procedure TWAHtmlDocumentParserTests.Parse_TableWithBorderZero_IsBorderless;
 var
   LDocument: TWARichDocument;
 begin
-  // The editor draws borders via CSS regardless of border="0", so the
-  // user sees (and expects in RTF) a bordered table.
+  // border="0" is an explicit "no border": a table the user made
+  // borderless must not gain borders on the way to RTF.
   LDocument := TWAHtmlDocumentParser.Parse(
     '<table border="0"><tr><td>A</td></tr></table>');
   try
-    Assert.AreEqual(1, TWATableBlock(LDocument.Blocks[0]).BorderWidth);
+    Assert.AreEqual(0, TWATableBlock(LDocument.Blocks[0]).BorderWidth);
   finally
     LDocument.Free;
   end;
