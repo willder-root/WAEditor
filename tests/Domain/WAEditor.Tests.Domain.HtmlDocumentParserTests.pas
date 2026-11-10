@@ -122,6 +122,22 @@ type
     [Test]
     procedure Parse_TableWithBorderZero_IsBorderless;
     [Test]
+    [TestCase('TableAttr', '<table border="0"><tr><td>A</td></tr></table>,0')]
+    [TestCase('TbodyAttr', '<table><tbody border="0"><tr><td>A</td></tr></tbody></table>,0')]
+    [TestCase('TheadAttr', '<table><thead border="0"><tr><th>A</th></tr></thead></table>,0')]
+    [TestCase('TrAttr', '<table><tr border="0"><td>A</td></tr></table>,0')]
+    [TestCase('TdAttr', '<table><tr><td border="0">A</td></tr></table>,0')]
+    [TestCase('TableStyleNone', '<table style="border: none;"><tr><td>A</td></tr></table>,0')]
+    [TestCase('TdStyleZero', '<table><tr><td style="border:0">A</td></tr></table>,0')]
+    [TestCase('TdStyleWidthZero', '<table><tr><td style="border-width: 0px">A</td></tr></table>,0')]
+    [TestCase('TrStyleZeroNone', '<table><tr style="border: 0 none"><td>A</td></tr></table>,0')]
+    [TestCase('NoBorderAnywhere', '<table><tr><td>A</td></tr></table>,1')]
+    [TestCase('BorderTwo', '<table border="2"><tr><td>A</td></tr></table>,2')]
+    [TestCase('SolidBorderStyle', '<table><tr><td style="border: 1px solid #000">A</td></tr></table>,1')]
+    [TestCase('OneSideZeroIsNotBorderless', '<table><tr><td style="border-left: 0">A</td></tr></table>,1')]
+    procedure Parse_TableBorderSignals_DecideBorderWidth(const AHtml: string;
+      AExpectedBorderWidth: Integer);
+    [Test]
     [TestCase('Px', 'margin-left: 40px,600')]
     [TestCase('Pt', 'margin-left: 30pt,600')]
     [TestCase('Cm', 'margin-left: 1cm,567')]
@@ -751,6 +767,19 @@ begin
     '<table border="0"><tr><td>A</td></tr></table>');
   try
     Assert.AreEqual(0, TWATableBlock(LDocument.Blocks[0]).BorderWidth);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_TableBorderSignals_DecideBorderWidth(
+  const AHtml: string; AExpectedBorderWidth: Integer);
+var
+  LDocument: TWARichDocument;
+begin
+  LDocument := TWAHtmlDocumentParser.Parse(AHtml);
+  try
+    Assert.AreEqual(AExpectedBorderWidth, TWATableBlock(LDocument.Blocks[0]).BorderWidth);
   finally
     LDocument.Free;
   end;

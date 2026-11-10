@@ -117,6 +117,7 @@ type
     FCurrentRow: TWATableRow;
     FCurrentTableWidthPercent: Double;
     FCurrentTableWidthPx: Double;
+    FCurrentTableBorderless: Boolean;
     FCurrentCell: TWATableCell;
     FCurrentList: TWAListBlock;
     FCurrentListItem: TWAListItem;
@@ -594,6 +595,44 @@ begin
   ARight := LMarginRight + LPaddingRight;
 end;
 
+function HasZeroBorder(const AAttributes: string): Boolean;
+// True when a tag explicitly says "no border": border="0" (the legacy
+// attribute), or in its inline style border / border-width with a zero
+// width, or border / border-style with none or hidden. Per-side
+// properties (border-left, ...) are not a whole-table statement.
+var
+  LAttribute, LName, LValue, LToken: string;
+  LDeclaration: string;
+  LColonPos, LBangPos, LTwips: Integer;
+begin
+  Result := False;
+  LAttribute := LowerCase(Trim(ExtractAttribute(AAttributes, 'border')));
+  if (LAttribute <> '') and TryCssLengthToTwips(LAttribute, LTwips) and (LTwips = 0) then
+    Exit(True);
+  if (LAttribute = '0px') or (LAttribute = '0pt') then
+    Exit(True);
+  for LDeclaration in DecodeHtmlEntities(ExtractAttribute(AAttributes, 'style')).Split([';']) do
+  begin
+    LColonPos := Pos(':', LDeclaration);
+    if LColonPos = 0 then
+      Continue;
+    LName := LowerCase(Trim(Copy(LDeclaration, 1, LColonPos - 1)));
+    if (LName <> 'border') and (LName <> 'border-width') and (LName <> 'border-style') then
+      Continue;
+    LValue := LowerCase(Trim(Copy(LDeclaration, LColonPos + 1, MaxInt)));
+    LBangPos := Pos('!', LValue);
+    if LBangPos > 0 then
+      LValue := Trim(Copy(LValue, 1, LBangPos - 1));
+    for LToken in LValue.Split([' '], TStringSplitOptions.ExcludeEmpty) do
+    begin
+      if (LName <> 'border-width') and ((LToken = 'none') or (LToken = 'hidden')) then
+        Exit(True);
+      if (LName <> 'border-style') and TryCssLengthToTwips(LToken, LTwips) and (LTwips = 0) then
+        Exit(True);
+    end;
+  end;
+end;
+
 function ParseAlignmentAttribute(const AAttributes: string; ADefault: TWATextAlignment): TWATextAlignment;
 var
   LAlign, LStyle: string;
@@ -737,6 +776,14 @@ var
   LImageWidthPx, LImageHeightPx: Integer;
   LNativeWidthPx, LNativeHeightPx: Integer;
 begin
+  // This model has one border setting per table, so a "no border" on any
+  // of its structural tags (<thead>, <tbody>, <tfoot>, <tr>, <td>, <th>;
+  // the <table> itself is handled below) makes the whole table borderless.
+  if (FCurrentTable <> nil) and
+     ((ATagName = 'thead') or (ATagName = 'tbody') or (ATagName = 'tfoot') or
+      (ATagName = 'tr') or (ATagName = 'td') or (ATagName = 'th')) and
+     HasZeroBorder(AAttributes) then
+    FCurrentTableBorderless := True;
   if (ATagName = 'b') or (ATagName = 'strong') then
   begin
     LFormat := CurrentFormat;
@@ -854,6 +901,7 @@ begin
     FCurrentTable := TWATableBlock.Create(LBorder);
     FCurrentTableWidthPercent := ExtractWidthPercent(AAttributes);
     FCurrentTableWidthPx := ExtractWidthPx(AAttributes);
+    FCurrentTableBorderless := HasZeroBorder(AAttributes);
     FDocument.Blocks.Add(FCurrentTable);
     FCurrentParagraph := nil;
   end
@@ -926,6 +974,8 @@ begin
   begin
     if FCurrentTable <> nil then
     begin
+      if FCurrentTableBorderless then
+        FCurrentTable.BorderWidth := 0;
       if FCurrentTableWidthPercent > 0 then
         ScaleColumnWidthsToTotal(FCurrentTable.ColumnWidths,
           WA_TEXT_AREA_WIDTH_TWIPS * FCurrentTableWidthPercent / 100)
@@ -935,6 +985,7 @@ begin
     FCurrentTable := nil;
     FCurrentTableWidthPercent := 0;
     FCurrentTableWidthPx := 0;
+    FCurrentTableBorderless := False;
     FCurrentParagraph := nil;
   end
   else if ATagName = 'li' then
