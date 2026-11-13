@@ -148,6 +148,10 @@ type
     procedure Parse_TableMargins_PositionTheTable(const AStyle: string;
       AExpectedOffsetTwips: Integer);
     [Test]
+    procedure Parse_CellPercentWidths_OverrideStaleColgroupWidths;
+    [Test]
+    procedure Parse_CellPixelWidth_OverridesColgroupWidth;
+    [Test]
     [TestCase('Px', 'margin-left: 40px,600')]
     [TestCase('Pt', 'margin-left: 30pt,600')]
     [TestCase('Cm', 'margin-left: 1cm,567')]
@@ -808,6 +812,63 @@ begin
     '<col style="width:100px;"></colgroup><tr><td>A</td><td>B</td></tr></table>');
   try
     Assert.AreEqual(AExpectedOffsetTwips, TWATableBlock(LDocument.Blocks[0]).LeftOffsetTwips);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_CellPercentWidths_OverrideStaleColgroupWidths;
+var
+  LDocument: TWARichDocument;
+  LWidths: TArray<Integer>;
+  I: Integer;
+begin
+  // Reported case: the editor stores a resized column as style="width: N%"
+  // on the first row's cells and leaves <colgroup> at 8 x 67px, so every
+  // column came out equal in the RTF.
+  LDocument := TWAHtmlDocumentParser.Parse(
+    '<table border="1" style="margin-left: 62px;"><colgroup>' +
+    '<col style="width:67px;"><col style="width:67px;"><col style="width:67px;">' +
+    '<col style="width:67px;"><col style="width:67px;"><col style="width:67px;">' +
+    '<col style="width:67px;"><col style="width:67px;"></colgroup><tbody><tr>' +
+    '<td colwidth="67" style="width: 26.5165%;">a</td>' +
+    '<td colwidth="67" style="width: 23.4888%;">b</td>' +
+    '<td colwidth="67" style="width: 1.20898%;">c</td>' +
+    '<td colwidth="67">d</td><td colwidth="67">e</td><td colwidth="67">f</td>' +
+    '<td colwidth="67">g</td><td colwidth="67">h</td></tr>' +
+    '<tr><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td><td>7</td><td>8</td></tr>' +
+    '</tbody></table>');
+  try
+    LWidths := TWATableBlock(LDocument.Blocks[0]).ColumnWidths;
+    Assert.AreEqual(8, Length(LWidths));
+    // T = 8 x 67px = 8040 twips; 26.5165% and 23.4888% of it.
+    Assert.IsTrue(Abs(LWidths[0] - 2132) <= 1);
+    Assert.IsTrue(Abs(LWidths[1] - 1888) <= 1);
+    // 1.2% would be unreadable: clamped to 32px.
+    Assert.AreEqual(480, LWidths[2]);
+    // The five unspecified columns share the remaining ~48.8% equally.
+    for I := 4 to 7 do
+      Assert.AreEqual(LWidths[3], LWidths[I]);
+    Assert.IsTrue(Abs(LWidths[3] - 784) <= 1);
+    Assert.IsTrue(LWidths[0] > LWidths[1]);
+    Assert.IsTrue(LWidths[1] > LWidths[3]);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_CellPixelWidth_OverridesColgroupWidth;
+var
+  LDocument: TWARichDocument;
+  LWidths: TArray<Integer>;
+begin
+  LDocument := TWAHtmlDocumentParser.Parse(
+    '<table><colgroup><col style="width:100px;"><col style="width:100px;"></colgroup>' +
+    '<tr><td style="width: 200px;">A</td><td>B</td></tr></table>');
+  try
+    LWidths := TWATableBlock(LDocument.Blocks[0]).ColumnWidths;
+    Assert.AreEqual(3000, LWidths[0]);
+    Assert.AreEqual(1500, LWidths[1]);
   finally
     LDocument.Free;
   end;

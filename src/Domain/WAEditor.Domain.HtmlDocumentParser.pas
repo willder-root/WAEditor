@@ -118,6 +118,11 @@ type
     FCurrentTableWidthPercent: Double;
     FCurrentTableWidthPx: Double;
     FCurrentTableBorderless: Boolean;
+    // Per-column widths found on the cells themselves (style="width: ...")
+    // by column index; 0 = none. A live editor records a resized column
+    // there, while <colgroup> keeps the stale original widths.
+    FCellWidthPercents: TArray<Double>;
+    FCellWidthPx: TArray<Double>;
     FCurrentTableLeftTwips: Integer;
     FCurrentTableLeftAuto: Boolean;
     FCurrentTableRightAuto: Boolean;
@@ -131,6 +136,8 @@ type
     procedure AppendTextSegment(const AText: string);
     procedure AppendText(const AText: string);
     procedure AppendLineBreak;
+    procedure RecordCellWidth(AColumnIndex: Integer; const AAttributes: string);
+    procedure ApplyCellWidths;
     procedure ApplyTableOffset;
     procedure HandleOpenTag(const ATagName, AAttributes: string);
     procedure HandleCloseTag(const ATagName: string);
@@ -840,6 +847,99 @@ begin
   AppendRun(TWARun.CreateLineBreak);
 end;
 
+procedure TWAHtmlParserState.RecordCellWidth(AColumnIndex: Integer; const AAttributes: string);
+var
+  LPercent, LPx: Double;
+begin
+  LPercent := ExtractWidthPercent(AAttributes);
+  LPx := ExtractWidthPx(AAttributes);
+  if (LPercent <= 0) and (LPx <= 0) then
+    Exit;
+  if Length(FCellWidthPercents) <= AColumnIndex then
+  begin
+    SetLength(FCellWidthPercents, AColumnIndex + 1);
+    SetLength(FCellWidthPx, AColumnIndex + 1);
+  end;
+  // The first cell of a column that states a width wins.
+  if (LPercent > 0) and (FCellWidthPercents[AColumnIndex] = 0) and (FCellWidthPx[AColumnIndex] = 0) then
+    FCellWidthPercents[AColumnIndex] := LPercent
+  else if (LPx > 0) and (FCellWidthPercents[AColumnIndex] = 0) and (FCellWidthPx[AColumnIndex] = 0) then
+    FCellWidthPx[AColumnIndex] := LPx;
+end;
+
+procedure TWAHtmlParserState.ApplyCellWidths;
+// The editor records a resized column as style="width: N%" on its cells
+// (N% of the table width) and leaves <colgroup> at the stale original
+// widths. Resolution, with T = the table's width (its own width style if
+// any, else the sum of the <col>s):
+//   - a column with a px width on its cell takes that width;
+//   - a column with a percent takes N% of T (never below a readable
+//     minimum, since a 1% column would wrap every character);
+//   - the other columns share the remaining (100 - sum of percents)% of
+//     T in proportion to their <col> widths.
+// This approximates the browser's auto layout, whose exact result cannot
+// be recovered from the HTML alone.
+const
+  MIN_COLUMN_TWIPS = 480; // 32px
+var
+  I, LColumnCount: Integer;
+  LTotal, LSumPercent, LSumOtherSource, LShare: Double;
+  LIsPercent: TArray<Boolean>;
+  LSource: TArray<Integer>;
+begin
+  LColumnCount := Length(FCurrentTable.ColumnWidths);
+  if (LColumnCount = 0) or ((Length(FCellWidthPercents) = 0) and (Length(FCellWidthPx) = 0)) then
+    Exit;
+  LSource := Copy(FCurrentTable.ColumnWidths);
+
+  LTotal := 0;
+  for I := 0 to LColumnCount - 1 do
+    LTotal := LTotal + LSource[I];
+  if FCurrentTableWidthPx > 0 then
+    LTotal := FCurrentTableWidthPx * 15
+  else if FCurrentTableWidthPercent > 0 then
+    LTotal := WA_TEXT_AREA_WIDTH_TWIPS * FCurrentTableWidthPercent / 100;
+  if LTotal <= 0 then
+    Exit;
+
+  SetLength(LIsPercent, LColumnCount);
+  LSumPercent := 0;
+  LSumOtherSource := 0;
+  for I := 0 to LColumnCount - 1 do
+  begin
+    LIsPercent[I] := (I < Length(FCellWidthPercents)) and (FCellWidthPercents[I] > 0);
+    if LIsPercent[I] then
+      LSumPercent := LSumPercent + FCellWidthPercents[I]
+    else if not ((I < Length(FCellWidthPx)) and (FCellWidthPx[I] > 0)) then
+      LSumOtherSource := LSumOtherSource + LSource[I];
+  end;
+
+  if LSumPercent = 0 then
+    LShare := LSumOtherSource // no percent: the other columns keep their own widths
+  else if LSumPercent < 100 then
+  begin
+    LShare := LTotal * (100 - LSumPercent) / 100;
+    for I := 0 to LColumnCount - 1 do
+      if (not LIsPercent[I]) and (I < Length(FCellWidthPx)) and (FCellWidthPx[I] > 0) then
+        LShare := LShare - FCellWidthPx[I] * 15;
+    if LShare < 0 then
+      LShare := 0;
+  end
+  else
+    LShare := 0;
+  for I := 0 to LColumnCount - 1 do
+  begin
+    if (I < Length(FCellWidthPx)) and (FCellWidthPx[I] > 0) then
+      FCurrentTable.ColumnWidths[I] := Round(FCellWidthPx[I] * 15)
+    else if LIsPercent[I] then
+      FCurrentTable.ColumnWidths[I] := Round(LTotal * FCellWidthPercents[I] / 100)
+    else if LSumOtherSource > 0 then
+      FCurrentTable.ColumnWidths[I] := Round(LShare * LSource[I] / LSumOtherSource);
+    if FCurrentTable.ColumnWidths[I] < MIN_COLUMN_TWIPS then
+      FCurrentTable.ColumnWidths[I] := MIN_COLUMN_TWIPS;
+  end;
+end;
+
 procedure TWAHtmlParserState.ApplyTableOffset;
 // Resolves the table's position once its final width is known: an explicit
 // margin-left is used as is; margin auto centers (both sides) or pushes
@@ -1004,6 +1104,8 @@ begin
     FCurrentTableWidthPercent := ExtractWidthPercent(AAttributes);
     FCurrentTableWidthPx := ExtractWidthPx(AAttributes);
     FCurrentTableBorderless := HasZeroBorder(AAttributes);
+    FCellWidthPercents := nil;
+    FCellWidthPx := nil;
     ParseTableMargins(AAttributes, FCurrentTableLeftTwips, FCurrentTableLeftAuto,
       FCurrentTableRightAuto);
     FDocument.Blocks.Add(FCurrentTable);
@@ -1042,6 +1144,7 @@ begin
           FCurrentTable.ColumnWidths[FCurrentRow.Cells.Count] := LColumnWidth;
         end;
       end;
+      RecordCellWidth(FCurrentRow.Cells.Count, AAttributes);
       FCurrentCell := FCurrentRow.AddCell;
       FCurrentCell.Alignment := ParseAlignmentAttribute(AAttributes, taLeftAlign);
     end;
@@ -1080,6 +1183,7 @@ begin
     begin
       if FCurrentTableBorderless then
         FCurrentTable.BorderWidth := 0;
+      ApplyCellWidths;
       if FCurrentTableWidthPercent > 0 then
         ScaleColumnWidthsToTotal(FCurrentTable.ColumnWidths,
           WA_TEXT_AREA_WIDTH_TWIPS * FCurrentTableWidthPercent / 100)
@@ -1094,6 +1198,8 @@ begin
     FCurrentTableLeftTwips := 0;
     FCurrentTableLeftAuto := False;
     FCurrentTableRightAuto := False;
+    FCellWidthPercents := nil;
+    FCellWidthPx := nil;
     FCurrentParagraph := nil;
   end
   else if ATagName = 'li' then
