@@ -118,6 +118,9 @@ type
     FCurrentTableWidthPercent: Double;
     FCurrentTableWidthPx: Double;
     FCurrentTableBorderless: Boolean;
+    FCurrentTableLeftTwips: Integer;
+    FCurrentTableLeftAuto: Boolean;
+    FCurrentTableRightAuto: Boolean;
     FCurrentCell: TWATableCell;
     FCurrentList: TWAListBlock;
     FCurrentListItem: TWAListItem;
@@ -128,6 +131,7 @@ type
     procedure AppendTextSegment(const AText: string);
     procedure AppendText(const AText: string);
     procedure AppendLineBreak;
+    procedure ApplyTableOffset;
     procedure HandleOpenTag(const ATagName, AAttributes: string);
     procedure HandleCloseTag(const ATagName: string);
     procedure ProcessTag(const ATag: string);
@@ -633,6 +637,79 @@ begin
   end;
 end;
 
+procedure ParseTableMargins(const AAttributes: string; out ALeftTwips: Integer;
+  out ALeftAuto, ARightAuto: Boolean);
+// A table is positioned with margin-left / margin-right (or the margin
+// shorthand) on the <table>: a length (any CSS unit, % of the text area)
+// pushes it from the left; "auto" on both sides centers it, "auto" on the
+// left only pushes it to the right edge. The legacy align="center|right"
+// attribute is honored when the style says nothing about it.
+var
+  LDeclaration, LName, LValue, LAlign: string;
+  LTokens: TArray<string>;
+  LColonPos, LBangPos, LRightIndex, LLeftIndex: Integer;
+
+  procedure ApplySide(const AText: string; out ATwipsOut: Integer; out AAuto: Boolean);
+  begin
+    AAuto := LowerCase(Trim(AText)) = 'auto';
+    if AAuto or not TryCssLengthToTwips(AText, ATwipsOut) then
+      ATwipsOut := 0;
+  end;
+
+var
+  LRightTwips: Integer;
+begin
+  ALeftTwips := 0;
+  ALeftAuto := False;
+  ARightAuto := False;
+  LRightTwips := 0;
+  for LDeclaration in DecodeHtmlEntities(ExtractAttribute(AAttributes, 'style')).Split([';']) do
+  begin
+    LColonPos := Pos(':', LDeclaration);
+    if LColonPos = 0 then
+      Continue;
+    LName := LowerCase(Trim(Copy(LDeclaration, 1, LColonPos - 1)));
+    LValue := Trim(Copy(LDeclaration, LColonPos + 1, MaxInt));
+    LBangPos := Pos('!', LValue);
+    if LBangPos > 0 then
+      LValue := Trim(Copy(LValue, 1, LBangPos - 1));
+    if LName = 'margin' then
+    begin
+      LTokens := LValue.Split([' '], TStringSplitOptions.ExcludeEmpty);
+      if Length(LTokens) > 0 then
+      begin
+        if Length(LTokens) >= 2 then
+          LRightIndex := 1
+        else
+          LRightIndex := 0;
+        if Length(LTokens) = 4 then
+          LLeftIndex := 3
+        else
+          LLeftIndex := LRightIndex;
+        ApplySide(LTokens[LLeftIndex], ALeftTwips, ALeftAuto);
+        ApplySide(LTokens[LRightIndex], LRightTwips, ARightAuto);
+      end;
+    end
+    else if (LName = 'margin-left') or (LName = 'margin-inline-start') then
+      ApplySide(LValue, ALeftTwips, ALeftAuto)
+    else if (LName = 'margin-right') or (LName = 'margin-inline-end') then
+      ApplySide(LValue, LRightTwips, ARightAuto);
+  end;
+  if (ALeftTwips = 0) and (not ALeftAuto) and (not ARightAuto) then
+  begin
+    LAlign := LowerCase(Trim(ExtractAttribute(AAttributes, 'align')));
+    if LAlign = 'center' then
+    begin
+      ALeftAuto := True;
+      ARightAuto := True;
+    end
+    else if LAlign = 'right' then
+      ALeftAuto := True;
+  end;
+  if ALeftTwips < 0 then
+    ALeftTwips := 0;
+end;
+
 function ParseAlignmentAttribute(const AAttributes: string; ADefault: TWATextAlignment): TWATextAlignment;
 var
   LAlign, LStyle: string;
@@ -761,6 +838,31 @@ end;
 procedure TWAHtmlParserState.AppendLineBreak;
 begin
   AppendRun(TWARun.CreateLineBreak);
+end;
+
+procedure TWAHtmlParserState.ApplyTableOffset;
+// Resolves the table's position once its final width is known: an explicit
+// margin-left is used as is; margin auto centers (both sides) or pushes
+// the table to the right edge (left side only) of the text area.
+var
+  LTotal, I, LOffset: Integer;
+begin
+  LTotal := 0;
+  for I := 0 to High(FCurrentTable.ColumnWidths) do
+    Inc(LTotal, FCurrentTable.ColumnWidths[I]);
+  LOffset := FCurrentTableLeftTwips;
+  if FCurrentTableLeftAuto then
+  begin
+    if LTotal <= 0 then
+      Exit;
+    if FCurrentTableRightAuto then
+      LOffset := (WA_TEXT_AREA_WIDTH_TWIPS - LTotal) div 2
+    else
+      LOffset := WA_TEXT_AREA_WIDTH_TWIPS - LTotal;
+  end;
+  if LOffset < 0 then
+    LOffset := 0;
+  FCurrentTable.LeftOffsetTwips := LOffset;
 end;
 
 procedure TWAHtmlParserState.HandleOpenTag(const ATagName, AAttributes: string);
@@ -902,6 +1004,8 @@ begin
     FCurrentTableWidthPercent := ExtractWidthPercent(AAttributes);
     FCurrentTableWidthPx := ExtractWidthPx(AAttributes);
     FCurrentTableBorderless := HasZeroBorder(AAttributes);
+    ParseTableMargins(AAttributes, FCurrentTableLeftTwips, FCurrentTableLeftAuto,
+      FCurrentTableRightAuto);
     FDocument.Blocks.Add(FCurrentTable);
     FCurrentParagraph := nil;
   end
@@ -981,11 +1085,15 @@ begin
           WA_TEXT_AREA_WIDTH_TWIPS * FCurrentTableWidthPercent / 100)
       else if FCurrentTableWidthPx > 0 then
         ScaleColumnWidthsToTotal(FCurrentTable.ColumnWidths, FCurrentTableWidthPx * 15);
+      ApplyTableOffset;
     end;
     FCurrentTable := nil;
     FCurrentTableWidthPercent := 0;
     FCurrentTableWidthPx := 0;
     FCurrentTableBorderless := False;
+    FCurrentTableLeftTwips := 0;
+    FCurrentTableLeftAuto := False;
+    FCurrentTableRightAuto := False;
     FCurrentParagraph := nil;
   end
   else if ATagName = 'li' then

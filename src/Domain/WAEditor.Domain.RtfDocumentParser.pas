@@ -43,6 +43,7 @@ type
     FCurrentFormat: TWARunFormat;
     FCurrentAlignment: TWATextAlignment;
     FCurrentHasBorder: Boolean;
+    FPendingTableLeft: Integer;
     FCurrentLeftIndent: Integer;
     FCurrentRightIndent: Integer;
     FCurrentFirstLineIndent: Integer;
@@ -464,7 +465,17 @@ begin
     begin
       FCurrentRow := FCurrentTable.AddRow;
       FPendingCellxValues.Clear;
+      FPendingTableLeft := 0;
     end;
+  end
+  else if AName = 'trleft' then
+  begin
+    // The table's distance from the text area's left edge; the \cellx
+    // values that follow are absolute, so it is subtracted from the first
+    // column below. Negative values (Word's cell-padding compensation)
+    // are not modeled and keep the old flush-left reading.
+    if AHasParam and (AParam > 0) then
+      FPendingTableLeft := AParam;
   end
   else if AName = 'cellx' then
   begin
@@ -517,10 +528,11 @@ begin
     if (FCurrentTable <> nil) and (Length(FCurrentTable.ColumnWidths) = 0) and
        (FPendingCellxValues.Count > 0) then
     begin
+      FCurrentTable.LeftOffsetTwips := FPendingTableLeft;
       SetLength(FCurrentTable.ColumnWidths, FPendingCellxValues.Count);
       for LCellxIndex := 0 to FPendingCellxValues.Count - 1 do
         if LCellxIndex = 0 then
-          FCurrentTable.ColumnWidths[0] := FPendingCellxValues[0]
+          FCurrentTable.ColumnWidths[0] := FPendingCellxValues[0] - FPendingTableLeft
         else
           FCurrentTable.ColumnWidths[LCellxIndex] :=
             FPendingCellxValues[LCellxIndex] - FPendingCellxValues[LCellxIndex - 1];

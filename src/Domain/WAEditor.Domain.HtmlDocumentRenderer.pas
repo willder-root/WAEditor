@@ -148,7 +148,10 @@ var
 begin
   LBuilder := TStringBuilder.Create;
   try
-    LBuilder.AppendFormat('<table border="%d">', [ATable.BorderWidth]);
+    LBuilder.AppendFormat('<table border="%d"', [ATable.BorderWidth]);
+    if ATable.LeftOffsetTwips > 0 then
+      LBuilder.AppendFormat(' style="margin-left: %dpx;"', [Round(ATable.LeftOffsetTwips / 15)]);
+    LBuilder.Append('>');
     // Twips -> px at the standard 96dpi reference (1px = 15 twips),
     // written back out as <colgroup><col> (and each <td>'s colwidth,
     // matching what a live WYSIWYG surface itself produces) so column

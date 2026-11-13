@@ -346,13 +346,17 @@ begin
     for LRow in ATable.Rows do
     begin
       LBuilder.Append('\trowd');
+      // \cellx positions are measured from the text area's left edge, so
+      // an offset table has both \trleft and every \cellx shifted by it.
+      if ATable.LeftOffsetTwips > 0 then
+        LBuilder.AppendFormat('\trleft%d', [ATable.LeftOffsetTwips]);
       // \cellx values are cumulative right-edge positions in twips, not
       // per-column widths, so they must be summed rather than just
       // multiplying the column index by a fixed width once real widths
       // are known.
       if Length(ATable.ColumnWidths) = LRow.Cells.Count then
       begin
-        LCumulativeWidth := 0;
+        LCumulativeWidth := ATable.LeftOffsetTwips;
         for I := 0 to LRow.Cells.Count - 1 do
         begin
           Inc(LCumulativeWidth, ATable.ColumnWidths[I]);
@@ -364,7 +368,7 @@ begin
         for I := 1 to LRow.Cells.Count do
         begin
           LBuilder.Append(LCellBorders);
-          LBuilder.AppendFormat('\cellx%d', [I * WA_TWIPS_PER_COLUMN]);
+          LBuilder.AppendFormat('\cellx%d', [ATable.LeftOffsetTwips + I * WA_TWIPS_PER_COLUMN]);
         end;
       LBuilder.Append(sLineBreak);
       for LCell in LRow.Cells do

@@ -119,6 +119,10 @@ type
   TWATableBlock = class(TWABlock)
   public
     BorderWidth: Integer;
+    // Distance from the left edge of the text area to the table's left
+    // edge, in twips (HTML margin-left on the <table>, RTF \trleft). 0 =
+    // flush left. Negative offsets are not modeled.
+    LeftOffsetTwips: Integer;
     // Column widths in twips (RTF's native unit, 1440 per inch), one
     // entry per column, applying uniformly to every row. An empty
     // array means no explicit widths were recorded, and renderers fall

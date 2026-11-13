@@ -48,6 +48,8 @@ type
     procedure HtmlToRtfToHtml_PreservesTableCellAlignmentAndPixelWidth;
     [Test]
     procedure HtmlToRtfToHtml_PreservesParagraphIndents;
+    [Test]
+    procedure HtmlToRtfToHtml_PreservesTablePosition;
   end;
 
 implementation
@@ -377,6 +379,44 @@ begin
 
   Assert.Contains(LRtf2, 'FORMCHECKBOX _Check=true');
   Assert.Contains(LRtf2, 'FORMCHECKBOX _Radio=off');
+end;
+
+procedure TWARichDocumentRoundTripTests.HtmlToRtfToHtml_PreservesTablePosition;
+var
+  LFromHtml, LFromRtf: TWARichDocument;
+  LRtf, LHtmlAgain: string;
+  LTable: TWATableBlock;
+begin
+  // Reported case: the table positioned with margin-left: 52.9503% (and
+  // sized with width: 22.9814%) came out flush left in the RTF.
+  LFromHtml := TWAHtmlDocumentParser.Parse(
+    '<table border="1" style="width: 22.9814%; margin-left: 52.9503%;">' +
+    '<colgroup><col style="width:31px;"><col style="width:31px;"></colgroup>' +
+    '<tbody><tr><td colwidth="31">a</td><td colwidth="31">b</td></tr></tbody></table>');
+  try
+    LTable := TWATableBlock(LFromHtml.Blocks[0]);
+    Assert.AreEqual(4779, LTable.LeftOffsetTwips); // 52.9503% of 9026
+    LRtf := TWARtfDocumentRenderer.Render(LFromHtml);
+  finally
+    LFromHtml.Free;
+  end;
+
+  Assert.Contains(LRtf, '\trleft4779');
+  // cellx is absolute: offset 4779 + two columns of 1037 twips each.
+  Assert.Contains(LRtf, '\cellx5816');
+  Assert.Contains(LRtf, '\cellx6853');
+
+  LFromRtf := TWARtfDocumentParser.Parse(LRtf);
+  try
+    LTable := TWATableBlock(LFromRtf.Blocks[0]);
+    Assert.AreEqual(4779, LTable.LeftOffsetTwips);
+    Assert.AreEqual(1037, LTable.ColumnWidths[0]);
+    LHtmlAgain := TWAHtmlDocumentRenderer.Render(LFromRtf);
+  finally
+    LFromRtf.Free;
+  end;
+
+  Assert.Contains(LHtmlAgain, 'margin-left: 319px;'); // 4779 twips = 318.6px
 end;
 
 procedure TWARichDocumentRoundTripTests.HtmlToRtfToHtml_PreservesParagraphIndents;

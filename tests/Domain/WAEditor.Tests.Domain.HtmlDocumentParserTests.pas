@@ -139,6 +139,16 @@ type
       AExpectedBorderWidth: Integer);
     [Test]
     [TestCase('Px', 'margin-left: 40px,600')]
+    [TestCase('Percent', 'margin-left: 50%,4513')]
+    [TestCase('Cm', 'margin-left: 2cm,1134')]
+    [TestCase('NoMargin', 'width: 100px,0')]
+    [TestCase('CenteredAuto', 'margin: 0 auto,3013')]
+    [TestCase('MarginLeftRightAuto', 'margin-left: auto; margin-right: auto,3013')]
+    [TestCase('RightAligned', 'margin-left: auto,6026')]
+    procedure Parse_TableMargins_PositionTheTable(const AStyle: string;
+      AExpectedOffsetTwips: Integer);
+    [Test]
+    [TestCase('Px', 'margin-left: 40px,600')]
     [TestCase('Pt', 'margin-left: 30pt,600')]
     [TestCase('Cm', 'margin-left: 1cm,567')]
     [TestCase('Mm', 'margin-left: 10mm,567')]
@@ -780,6 +790,24 @@ begin
   LDocument := TWAHtmlDocumentParser.Parse(AHtml);
   try
     Assert.AreEqual(AExpectedBorderWidth, TWATableBlock(LDocument.Blocks[0]).BorderWidth);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_TableMargins_PositionTheTable(
+  const AStyle: string; AExpectedOffsetTwips: Integer);
+var
+  LDocument: TWARichDocument;
+begin
+  // Two 100px columns make the table 3000 twips wide in the 9026-twip
+  // text area: centering leaves (9026 - 3000) div 2 = 3013 on the left,
+  // right-aligning leaves 9026 - 3000 = 6026.
+  LDocument := TWAHtmlDocumentParser.Parse(
+    '<table style="' + AStyle + '"><colgroup><col style="width:100px;">' +
+    '<col style="width:100px;"></colgroup><tr><td>A</td><td>B</td></tr></table>');
+  try
+    Assert.AreEqual(AExpectedOffsetTwips, TWATableBlock(LDocument.Blocks[0]).LeftOffsetTwips);
   finally
     LDocument.Free;
   end;
