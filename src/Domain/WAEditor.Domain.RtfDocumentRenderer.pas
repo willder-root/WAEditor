@@ -326,7 +326,7 @@ var
   LRun: TWARun;
   I: Integer;
   LCumulativeWidth: Integer;
-  LGridCount, LSpanIndex: Integer;
+  LSpanIndex: Integer;
   LBorderWidthInTwips: Integer;
   LCellBorders: string;
 begin
@@ -358,15 +358,16 @@ begin
       // One \cellx per grid column: a cell spanning N columns (colspan)
       // is written as N grid cells, the first marked \clmgf and the rest
       // \clmrg, which is how RTF readers (WPTools, Word) merge cells.
-      LGridCount := 0;
-      for LCell in LRow.Cells do
-        Inc(LGridCount, LCell.ColSpan);
       LCumulativeWidth := ATable.LeftOffsetTwips;
       I := 0;
       for LCell in LRow.Cells do
         for LSpanIndex := 0 to LCell.ColSpan - 1 do
         begin
-          if Length(ATable.ColumnWidths) = LGridCount then
+          // Each grid column keeps its own width, also in a row that
+          // covers fewer columns than the grid (rows of a WPTools form
+          // end at different edges); only a column the table has no
+          // width for falls back to the fixed default.
+          if I < Length(ATable.ColumnWidths) then
             Inc(LCumulativeWidth, ATable.ColumnWidths[I])
           else
             Inc(LCumulativeWidth, WA_TWIPS_PER_COLUMN);

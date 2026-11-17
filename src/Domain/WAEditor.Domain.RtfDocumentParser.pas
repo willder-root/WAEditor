@@ -72,6 +72,15 @@ type
     FPendingCellMerges: TList<Integer>;
     FPendingMerge: Integer;
     FCurrentGridIndex: Integer;
+    // Right edge (absolute \cellx, twips) of every visible cell of each row
+    // read so far. WPTools writes each row with its own \cellx set (a form
+    // row may have 6 cells and the next one 2, the first of them as wide
+    // as 5 of the row above), so the table grid is the union of the edges
+    // of all rows, rebuilt at every \row (see RebuildTableGrid).
+    FRowCellEdges: TDictionary<TWATableRow, TArray<Integer>>;
+    // Every \cellx of each row, merged or not: the grid keeps the inner
+    // edges of a \clmgf/\clmrg merge even when no other row repeats them.
+    FRowGridEdges: TDictionary<TWATableRow, TArray<Integer>>;
     FCurrentList: TWAListBlock;
     FCurrentListItem: TWAListItem;
     // A list item is rendered as \pard\fi-360\li720 followed by a literal
@@ -99,6 +108,8 @@ type
     procedure ParseFontTableGroup;
     procedure ParseFontEntry;
     procedure ParseTableGroup;
+    procedure RecordRowCellEdges;
+    procedure RebuildTableGrid(ATable: TWATableBlock);
     procedure ParseListTextGroup;
     procedure ParseFieldGroup;
     procedure AppendCheckbox(AChecked: Boolean; AIsRadio: Boolean);
@@ -137,6 +148,8 @@ begin
   FGroupStack := TStack<TWARtfGroupSnapshot>.Create;
   FPendingCellxValues := TList<Integer>.Create;
   FPendingCellMerges := TList<Integer>.Create;
+  FRowCellEdges := TDictionary<TWATableRow, TArray<Integer>>.Create;
+  FRowGridEdges := TDictionary<TWATableRow, TArray<Integer>>.Create;
   FCurrentFormat := TWARunFormat.Plain;
   FCurrentAlignment := taLeftAlign;
 end;
@@ -144,6 +157,8 @@ end;
 destructor TWARtfParserState.Destroy;
 begin
   FPendingCellMerges.Free;
+  FRowCellEdges.Free;
+  FRowGridEdges.Free;
   FPendingCellxValues.Free;
   FGroupStack.Free;
   FFontTable.Free;
@@ -334,7 +349,6 @@ procedure TWARtfParserState.HandleControlWord(const AName: string; AHasParam: Bo
   AParam: Integer);
 var
   LFontName: string;
-  LCellxIndex: Integer;
 begin
   if AName = 'par' then
   begin
@@ -558,20 +572,16 @@ begin
   end
   else if AName = 'row' then
   begin
-    // \cellx values are cumulative right-edge positions in twips; only
-    // the first row's layout is kept, matching this model's single
-    // ColumnWidths array applying to the whole table.
-    if (FCurrentTable <> nil) and (Length(FCurrentTable.ColumnWidths) = 0) and
+    // \cellx values are cumulative right-edge positions in twips. The
+    // table's left offset comes from its first row; the column grid is
+    // the union of the cell edges of all rows read so far.
+    if (FCurrentTable <> nil) and (FCurrentRow <> nil) and
        (FPendingCellxValues.Count > 0) then
     begin
-      FCurrentTable.LeftOffsetTwips := FPendingTableLeft;
-      SetLength(FCurrentTable.ColumnWidths, FPendingCellxValues.Count);
-      for LCellxIndex := 0 to FPendingCellxValues.Count - 1 do
-        if LCellxIndex = 0 then
-          FCurrentTable.ColumnWidths[0] := FPendingCellxValues[0] - FPendingTableLeft
-        else
-          FCurrentTable.ColumnWidths[LCellxIndex] :=
-            FPendingCellxValues[LCellxIndex] - FPendingCellxValues[LCellxIndex - 1];
+      if Length(FCurrentTable.ColumnWidths) = 0 then
+        FCurrentTable.LeftOffsetTwips := FPendingTableLeft;
+      RecordRowCellEdges;
+      RebuildTableGrid(FCurrentTable);
     end;
     FCurrentRow := nil;
   end
@@ -726,6 +736,94 @@ begin
     else
       Inc(FPos);
     end;
+  end;
+end;
+
+procedure TWARtfParserState.RecordRowCellEdges;
+// The right edge of each visible cell of the row just closed: a cell
+// spanning N grid cells (\clmgf + \clmrg) ends at the \cellx of its last
+// one. A row that ends with bare \cell words (no \intbl, so no cell in the
+// model) simply has fewer edges.
+var
+  LEdges: TArray<Integer>;
+  LCellIndex, LGridEnd, LCellxIndex: Integer;
+begin
+  SetLength(LEdges, FCurrentRow.Cells.Count);
+  LGridEnd := 0;
+  for LCellIndex := 0 to FCurrentRow.Cells.Count - 1 do
+  begin
+    Inc(LGridEnd, FCurrentRow.Cells[LCellIndex].ColSpan);
+    LCellxIndex := LGridEnd - 1;
+    if LCellxIndex >= FPendingCellxValues.Count then
+      LCellxIndex := FPendingCellxValues.Count - 1;
+    LEdges[LCellIndex] := FPendingCellxValues[LCellxIndex];
+  end;
+  FRowCellEdges.AddOrSetValue(FCurrentRow, LEdges);
+  FRowGridEdges.AddOrSetValue(FCurrentRow, FPendingCellxValues.ToArray);
+end;
+
+procedure TWARtfParserState.RebuildTableGrid(ATable: TWATableBlock);
+// Grid columns = the sorted union of the \cellx edges of every row; edges
+// closer than WA_GRID_EDGE_TOLERANCE are one and the same edge (rows typed
+// by hand rarely line up to the twip, and a 1-twip difference must not
+// become a sliver column). Each cell then spans the grid columns between
+// the previous cell's edge and its own (HTML colspan), so a 2-cell row
+// under a 6-cell row keeps its real widths instead of the first two
+// columns of the 6-cell row.
+const
+  WA_GRID_EDGE_TOLERANCE = 150; // twips, 10px: hand-drawn rows differ by a few px
+var
+  LAllEdges: TList<Integer>;
+  LGrid: TList<Integer>;
+  LRow: TWATableRow;
+  LEdges: TArray<Integer>;
+  LEdge, LIndex, LCellIndex, LGridIndex, LPreviousGridIndex: Integer;
+begin
+  LAllEdges := TList<Integer>.Create;
+  LGrid := TList<Integer>.Create;
+  try
+    for LRow in ATable.Rows do
+      if FRowGridEdges.TryGetValue(LRow, LEdges) then
+        for LEdge in LEdges do
+          LAllEdges.Add(LEdge);
+    if LAllEdges.Count = 0 then
+      Exit;
+    LAllEdges.Sort;
+    for LEdge in LAllEdges do
+      if (LGrid.Count = 0) or (LEdge - LGrid.Last > WA_GRID_EDGE_TOLERANCE) then
+        LGrid.Add(LEdge);
+
+    SetLength(ATable.ColumnWidths, LGrid.Count);
+    for LIndex := 0 to LGrid.Count - 1 do
+      if LIndex = 0 then
+        ATable.ColumnWidths[0] := LGrid[0] - ATable.LeftOffsetTwips
+      else
+        ATable.ColumnWidths[LIndex] := LGrid[LIndex] - LGrid[LIndex - 1];
+
+    for LRow in ATable.Rows do
+      if FRowCellEdges.TryGetValue(LRow, LEdges) then
+      begin
+        LPreviousGridIndex := -1;
+        for LCellIndex := 0 to LRow.Cells.Count - 1 do
+        begin
+          // The grid edge this cell's edge was folded into
+          LGridIndex := LGrid.Count - 1;
+          for LIndex := 0 to LGrid.Count - 1 do
+            if LGrid[LIndex] >= LEdges[LCellIndex] - WA_GRID_EDGE_TOLERANCE then
+            begin
+              LGridIndex := LIndex;
+              Break;
+            end;
+          if LGridIndex - LPreviousGridIndex >= 1 then
+            LRow.Cells[LCellIndex].ColSpan := LGridIndex - LPreviousGridIndex
+          else
+            LRow.Cells[LCellIndex].ColSpan := 1;
+          LPreviousGridIndex := LPreviousGridIndex + LRow.Cells[LCellIndex].ColSpan;
+        end;
+      end;
+  finally
+    LGrid.Free;
+    LAllEdges.Free;
   end;
 end;
 

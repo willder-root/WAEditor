@@ -52,6 +52,8 @@ type
     procedure HtmlToRtfToHtml_PreservesTablePosition;
     [Test]
     procedure RtfToHtmlToRtf_PreservesHorizontalMerge;
+    [Test]
+    procedure RtfToHtmlToRtf_KeepsRowsWithDifferentCellx;
   end;
 
 implementation
@@ -418,6 +420,43 @@ begin
   Assert.Contains(LRtfAgain, '\cellx4500');
   // Both rows still have 4 grid cells: 4 + 4 \cell (not counting \cellx).
   Assert.AreEqual(8, Length(LRtfAgain.Split(['\cell' + sLineBreak])) - 1);
+end;
+
+procedure TWARichDocumentRoundTripTests.RtfToHtmlToRtf_KeepsRowsWithDifferentCellx;
+var
+  LFromRtf, LFromHtml: TWARichDocument;
+  LHtml, LRtfAgain: string;
+begin
+  // Reported case (WPTools form, atestado 1031): a 2-cell row under a
+  // 3-cell row came back from the editor with the widths of the first two
+  // columns (the narrow form fields). The wide cell must come back as a
+  // merge of the first two grid columns, ending at the same \cellx.
+  LFromRtf := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 {' +
+    '\trowd\cellx1500\cellx3000\cellx4500' +
+    '\pard\intbl {a}\cell\pard\intbl {b}\cell\pard\intbl {c}\cell\row' +
+    '\trowd\cellx3000\cellx4500' +
+    '\pard\intbl {Nome}\cell\pard\intbl {CNES}\cell\row}}');
+  try
+    LHtml := TWAHtmlDocumentRenderer.Render(LFromRtf);
+  finally
+    LFromRtf.Free;
+  end;
+
+  Assert.Contains(LHtml, '<td colspan="2" colwidth="100,100">');
+
+  LFromHtml := TWAHtmlDocumentParser.Parse(LHtml);
+  try
+    LRtfAgain := TWARtfDocumentRenderer.Render(LFromHtml);
+  finally
+    LFromHtml.Free;
+  end;
+
+  Assert.Contains(LRtfAgain, '\clmgf');
+  Assert.AreEqual(1, Length(LRtfAgain.Split(['\clmrg'])) - 1);
+  Assert.Contains(LRtfAgain, '\cellx3000');
+  Assert.Contains(LRtfAgain, '\cellx4500');
+  Assert.IsFalse(LRtfAgain.Contains('\cellx2000'));
 end;
 
 procedure TWARichDocumentRoundTripTests.HtmlToRtfToHtml_PreservesTablePosition;

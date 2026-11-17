@@ -99,6 +99,10 @@ type
     procedure Parse_TableCellAlignment_IsKeptPerCell;
     [Test]
     procedure Parse_HorizontalMerge_BecomesColSpan;
+    [Test]
+    procedure Parse_RowsWithDifferentCellx_ShareUnionGrid;
+    [Test]
+    procedure Parse_RowWithNewEdge_SplitsGridForEveryRow;
 
     [Test]
     procedure Parse_CellBordersWithoutWidth_AreBorderedWithDefaultWidth;
@@ -682,6 +686,68 @@ begin
     LTable := TWATableBlock(LDocument.Blocks[0]);
     Assert.AreEqual(2, LTable.Rows[0].Cells.Count);
     Assert.AreEqual(2, LTable.Rows[0].Cells[0].ColSpan);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_RowsWithDifferentCellx_ShareUnionGrid;
+var
+  LDocument: TWARichDocument;
+  LTable: TWATableBlock;
+begin
+  // Reported case (WPTools forms): every row has its own \cellx set. A
+  // 2-cell row under a 3-cell row must keep its real widths, so its first
+  // cell spans the first two grid columns. An edge 10 twips off (3010) is
+  // the same grid edge, not a sliver column.
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 {' +
+    '\trowd\cellx1000\cellx2000\cellx3000' +
+    '\pard\intbl {A}\cell\pard\intbl {B}\cell\pard\intbl {C}\cell\row' +
+    '\trowd\cellx2000\cellx3000' +
+    '\pard\intbl {X}\cell\pard\intbl {Y}\cell\row' +
+    '\trowd\cellx1000\cellx3010' +
+    '\pard\intbl {P}\cell\pard\intbl {Q}\cell\row}}');
+  try
+    LTable := TWATableBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(3, Length(LTable.ColumnWidths));
+    Assert.AreEqual(1000, LTable.ColumnWidths[0]);
+    Assert.AreEqual(1000, LTable.ColumnWidths[1]);
+    Assert.AreEqual(1000, LTable.ColumnWidths[2]);
+    Assert.AreEqual(1, LTable.Rows[0].Cells[0].ColSpan);
+    Assert.AreEqual(2, LTable.Rows[1].Cells[0].ColSpan);
+    Assert.AreEqual('X', LTable.Rows[1].Cells[0].Runs[0].Text);
+    Assert.AreEqual(1, LTable.Rows[1].Cells[1].ColSpan);
+    Assert.AreEqual(1, LTable.Rows[2].Cells[0].ColSpan);
+    Assert.AreEqual(2, LTable.Rows[2].Cells[1].ColSpan);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_RowWithNewEdge_SplitsGridForEveryRow;
+var
+  LDocument: TWARichDocument;
+  LTable: TWATableBlock;
+begin
+  // A later row with an edge (1500) the first row does not have splits
+  // that grid column for the whole table: the first row's cell that
+  // covers it now spans two columns, together with a \clmrg merge.
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 {' +
+    '\trowd\cellx1000\clmgf\cellx2000\clmrg\cellx3000' +
+    '\pard\intbl {A}\cell\pard\intbl {B}\cell\pard\intbl \cell\row' +
+    '\trowd\cellx1500\cellx3000' +
+    '\pard\intbl {X}\cell\pard\intbl {Y}\cell\row}}');
+  try
+    LTable := TWATableBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(4, Length(LTable.ColumnWidths));
+    Assert.AreEqual(500, LTable.ColumnWidths[1]);
+    Assert.AreEqual(2, LTable.Rows[0].Cells.Count);
+    Assert.AreEqual(1, LTable.Rows[0].Cells[0].ColSpan);
+    Assert.AreEqual(3, LTable.Rows[0].Cells[1].ColSpan);
+    Assert.AreEqual(2, LTable.Rows[1].Cells[0].ColSpan);
+    Assert.AreEqual(2, LTable.Rows[1].Cells[1].ColSpan);
   finally
     LDocument.Free;
   end;
