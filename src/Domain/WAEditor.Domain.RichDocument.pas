@@ -102,6 +102,10 @@ type
     // Horizontal alignment of the cell's content (HTML text-align on the
     // <td>, RTF \ql/\qc/\qr/\qj on the cell's paragraph).
     Alignment: TWATextAlignment;
+    // Number of grid columns this cell covers (HTML colspan, RTF \clmgf
+    // followed by \clmrg). A row holds one TWATableCell per visible cell,
+    // so the sum of its cells' ColSpan is the table's column count.
+    ColSpan: Integer;
     Runs: TObjectList<TWARun>;
     constructor Create;
     destructor Destroy; override;
@@ -254,6 +258,7 @@ constructor TWATableCell.Create;
 begin
   inherited Create;
   Alignment := taLeftAlign;
+  ColSpan := 1;
   Runs := TObjectList<TWARun>.Create(True);
 end;
 

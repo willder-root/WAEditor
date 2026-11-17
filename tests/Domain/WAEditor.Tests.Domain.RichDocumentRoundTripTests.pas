@@ -50,6 +50,8 @@ type
     procedure HtmlToRtfToHtml_PreservesParagraphIndents;
     [Test]
     procedure HtmlToRtfToHtml_PreservesTablePosition;
+    [Test]
+    procedure RtfToHtmlToRtf_PreservesHorizontalMerge;
   end;
 
 implementation
@@ -379,6 +381,43 @@ begin
 
   Assert.Contains(LRtf2, 'FORMCHECKBOX _Check=true');
   Assert.Contains(LRtf2, 'FORMCHECKBOX _Radio=off');
+end;
+
+procedure TWARichDocumentRoundTripTests.RtfToHtmlToRtf_PreservesHorizontalMerge;
+var
+  LFromRtf, LFromHtml: TWARichDocument;
+  LHtml, LRtfAgain: string;
+begin
+  // Reported case: WPTools forms merge cells with \clmgf/\clmrg; the
+  // merges were lost on the way to HTML (each grid cell became its own
+  // <td>) and so could never come back to the RTF.
+  LFromRtf := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 {' +
+    '\trowd\clmgf\cellx1500\clmrg\cellx3000\clmrg\cellx4500\cellx6000' +
+    '\pard\intbl {Header}\cell\pard\intbl \cell\pard\intbl \cell\pard\intbl {CNES}\cell\row' +
+    '\trowd\cellx1500\cellx3000\cellx4500\cellx6000' +
+    '\pard\intbl {a}\cell\pard\intbl {b}\cell\pard\intbl {c}\cell\pard\intbl {d}\cell\row}}');
+  try
+    LHtml := TWAHtmlDocumentRenderer.Render(LFromRtf);
+  finally
+    LFromRtf.Free;
+  end;
+
+  Assert.Contains(LHtml, '<td colspan="3" colwidth="100,100,100">');
+  Assert.AreEqual(4, Length(LHtml.Split(['<col '])) - 1);
+
+  LFromHtml := TWAHtmlDocumentParser.Parse(LHtml);
+  try
+    LRtfAgain := TWARtfDocumentRenderer.Render(LFromHtml);
+  finally
+    LFromHtml.Free;
+  end;
+
+  Assert.Contains(LRtfAgain, '\clmgf');
+  Assert.AreEqual(2, Length(LRtfAgain.Split(['\clmrg'])) - 1);
+  Assert.Contains(LRtfAgain, '\cellx4500');
+  // Both rows still have 4 grid cells: 4 + 4 \cell (not counting \cellx).
+  Assert.AreEqual(8, Length(LRtfAgain.Split(['\cell' + sLineBreak])) - 1);
 end;
 
 procedure TWARichDocumentRoundTripTests.HtmlToRtfToHtml_PreservesTablePosition;

@@ -145,6 +145,8 @@ var
   LRun: TWARun;
   I: Integer;
   LColumnWidthPx: Integer;
+  LGridIndex, LSpanIndex: Integer;
+  LColWidthList: string;
 begin
   LBuilder := TStringBuilder.Create;
   try
@@ -167,15 +169,33 @@ begin
     for LRow in ATable.Rows do
     begin
       LBuilder.Append('<tr>');
+      LGridIndex := 0;
       for I := 0 to LRow.Cells.Count - 1 do
       begin
         LCell := LRow.Cells[I];
         LBuilder.Append('<td');
-        if (I < Length(ATable.ColumnWidths)) and (ATable.ColumnWidths[I] > 0) then
-        begin
-          LColumnWidthPx := ATable.ColumnWidths[I] div 15;
-          LBuilder.AppendFormat(' colwidth="%d"', [LColumnWidthPx]);
-        end;
+        if LCell.ColSpan > 1 then
+          LBuilder.AppendFormat(' colspan="%d"', [LCell.ColSpan]);
+        // colwidth lists one px width per grid column the cell covers
+        // ("120,80" for colspan="2"), as the editor itself writes it.
+        LColWidthList := '';
+        for LSpanIndex := 0 to LCell.ColSpan - 1 do
+          if (LGridIndex + LSpanIndex < Length(ATable.ColumnWidths)) and
+             (ATable.ColumnWidths[LGridIndex + LSpanIndex] > 0) then
+          begin
+            LColumnWidthPx := ATable.ColumnWidths[LGridIndex + LSpanIndex] div 15;
+            if LColWidthList <> '' then
+              LColWidthList := LColWidthList + ',';
+            LColWidthList := LColWidthList + IntToStr(LColumnWidthPx);
+          end
+          else
+          begin
+            LColWidthList := '';
+            Break;
+          end;
+        if LColWidthList <> '' then
+          LBuilder.AppendFormat(' colwidth="%s"', [LColWidthList]);
+        Inc(LGridIndex, LCell.ColSpan);
         if LCell.Alignment <> taLeftAlign then
           LBuilder.AppendFormat(' style="text-align: %s;"',
             [TWAAlignmentMapper.ToHtmlAttribute(LCell.Alignment)]);

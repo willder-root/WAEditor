@@ -152,6 +152,8 @@ type
     [Test]
     procedure Parse_CellPixelWidth_OverridesColgroupWidth;
     [Test]
+    procedure Parse_ColSpan_SetsCellSpanAndGridColumnWidths;
+    [Test]
     [TestCase('Px', 'margin-left: 40px,600')]
     [TestCase('Pt', 'margin-left: 30pt,600')]
     [TestCase('Cm', 'margin-left: 1cm,567')]
@@ -852,6 +854,30 @@ begin
     Assert.IsTrue(Abs(LWidths[3] - 784) <= 1);
     Assert.IsTrue(LWidths[0] > LWidths[1]);
     Assert.IsTrue(LWidths[1] > LWidths[3]);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_ColSpan_SetsCellSpanAndGridColumnWidths;
+var
+  LDocument: TWARichDocument;
+  LTable: TWATableBlock;
+begin
+  // No <colgroup>: the widths come from colwidth, which lists one px
+  // value per grid column a spanning cell covers.
+  LDocument := TWAHtmlDocumentParser.Parse(
+    '<table><tr><td colspan="2" colwidth="100,50">AB</td><td colwidth="40">C</td></tr>' +
+    '<tr><td>1</td><td>2</td><td>3</td></tr></table>');
+  try
+    LTable := TWATableBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(2, LTable.Rows[0].Cells.Count);
+    Assert.AreEqual(2, LTable.Rows[0].Cells[0].ColSpan);
+    Assert.AreEqual(1, LTable.Rows[0].Cells[1].ColSpan);
+    Assert.AreEqual(3, Length(LTable.ColumnWidths));
+    Assert.AreEqual(1500, LTable.ColumnWidths[0]);
+    Assert.AreEqual(750, LTable.ColumnWidths[1]);
+    Assert.AreEqual(600, LTable.ColumnWidths[2]);
   finally
     LDocument.Free;
   end;

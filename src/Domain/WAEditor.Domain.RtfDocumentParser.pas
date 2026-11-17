@@ -66,6 +66,12 @@ type
     // turned into per-column widths (via consecutive differences) on
     // \row, once, from the table's first row.
     FPendingCellxValues: TList<Integer>;
+    // Horizontal merge flag of each \cellx above (0 = none, 1 = \clmgf
+    // first cell of a merge, 2 = \clmrg continuation), the flag pending
+    // for the next \cellx, and the grid column of the cell being read.
+    FPendingCellMerges: TList<Integer>;
+    FPendingMerge: Integer;
+    FCurrentGridIndex: Integer;
     FCurrentList: TWAListBlock;
     FCurrentListItem: TWAListItem;
     // A list item is rendered as \pard\fi-360\li720 followed by a literal
@@ -130,12 +136,14 @@ begin
   FFontTable := TDictionary<Integer, string>.Create;
   FGroupStack := TStack<TWARtfGroupSnapshot>.Create;
   FPendingCellxValues := TList<Integer>.Create;
+  FPendingCellMerges := TList<Integer>.Create;
   FCurrentFormat := TWARunFormat.Plain;
   FCurrentAlignment := taLeftAlign;
 end;
 
 destructor TWARtfParserState.Destroy;
 begin
+  FPendingCellMerges.Free;
   FPendingCellxValues.Free;
   FGroupStack.Free;
   FFontTable.Free;
@@ -465,6 +473,9 @@ begin
     begin
       FCurrentRow := FCurrentTable.AddRow;
       FPendingCellxValues.Clear;
+      FPendingCellMerges.Clear;
+      FPendingMerge := 0;
+      FCurrentGridIndex := 0;
       FPendingTableLeft := 0;
     end;
   end
@@ -480,8 +491,16 @@ begin
   else if AName = 'cellx' then
   begin
     if AHasParam then
+    begin
       FPendingCellxValues.Add(AParam);
+      FPendingCellMerges.Add(FPendingMerge);
+    end;
+    FPendingMerge := 0;
   end
+  else if AName = 'clmgf' then
+    FPendingMerge := 1
+  else if AName = 'clmrg' then
+    FPendingMerge := 2
   else if (AName = 'clbrdrl') or (AName = 'clbrdrr') or (AName = 'clbrdrt') or
           (AName = 'clbrdrb') then
   begin
@@ -517,6 +536,23 @@ begin
   begin
     if FCurrentCell <> nil then
       FCurrentCell.Alignment := FCurrentAlignment;
+    // A \clmrg grid cell is the continuation of the merge started by the
+    // cell before it: its (normally empty) content is dropped and the
+    // previous cell spans one more column (HTML colspan).
+    if (FCurrentRow <> nil) and (FCurrentGridIndex < FPendingCellMerges.Count) and
+       (FPendingCellMerges[FCurrentGridIndex] = 2) then
+    begin
+      if (FCurrentCell <> nil) and (FCurrentRow.Cells.Count >= 2) and
+         (FCurrentRow.Cells.Last = FCurrentCell) then
+      begin
+        Inc(FCurrentRow.Cells[FCurrentRow.Cells.Count - 2].ColSpan);
+        FCurrentRow.Cells.Delete(FCurrentRow.Cells.Count - 1);
+      end
+      else if (FCurrentCell = nil) and (FCurrentRow.Cells.Count >= 1) then
+        // A bare \cell (no \intbl paragraph) for the continuation.
+        Inc(FCurrentRow.Cells.Last.ColSpan);
+    end;
+    Inc(FCurrentGridIndex);
     FCurrentCell := nil;
     FCellParagraphBreakPending := False;
   end

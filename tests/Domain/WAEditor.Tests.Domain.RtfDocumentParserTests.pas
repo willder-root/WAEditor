@@ -97,6 +97,8 @@ type
     procedure Parse_TableWithoutCellBorderControlWords_IsBorderless;
     [Test]
     procedure Parse_TableCellAlignment_IsKeptPerCell;
+    [Test]
+    procedure Parse_HorizontalMerge_BecomesColSpan;
 
     [Test]
     procedure Parse_CellBordersWithoutWidth_AreBorderedWithDefaultWidth;
@@ -638,6 +640,48 @@ begin
   try
     LTable := TWATableBlock(LDocument.Blocks[0]);
     Assert.AreEqual(1, LTable.BorderWidth);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_HorizontalMerge_BecomesColSpan;
+var
+  LDocument: TWARichDocument;
+  LTable: TWATableBlock;
+begin
+  // \clmgf starts a merge, \clmrg continues it: three grid columns, the
+  // first two merged into one cell spanning 2 (HTML colspan="2").
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 {' +
+    '\trowd\clmgf\cellx1000\clmrg\cellx2500\cellx3000' +
+    '\pard\intbl {Merged}\cell\pard\intbl \cell\pard\intbl {C}\cell\row' +
+    '\trowd\cellx1000\cellx2500\cellx3000' +
+    '\pard\intbl {1}\cell\pard\intbl {2}\cell\pard\intbl {3}\cell\row}}');
+  try
+    LTable := TWATableBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(2, LTable.Rows[0].Cells.Count);
+    Assert.AreEqual(2, LTable.Rows[0].Cells[0].ColSpan);
+    Assert.AreEqual('Merged', LTable.Rows[0].Cells[0].Runs[0].Text);
+    Assert.AreEqual(1, LTable.Rows[0].Cells[1].ColSpan);
+    Assert.AreEqual('C', LTable.Rows[0].Cells[1].Runs[0].Text);
+    Assert.AreEqual(3, LTable.Rows[1].Cells.Count);
+    // The grid keeps all three columns.
+    Assert.AreEqual(3, Length(LTable.ColumnWidths));
+    Assert.AreEqual(1500, LTable.ColumnWidths[1]);
+  finally
+    LDocument.Free;
+  end;
+
+  // Continuation written as a bare \cell, with no \pard\intbl paragraph.
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 {' +
+    '\trowd\clmgf\cellx1000\clmrg\cellx2000\cellx3000' +
+    '\pard\intbl {Merged}\cell\cell\pard\intbl {C}\cell\row}}');
+  try
+    LTable := TWATableBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(2, LTable.Rows[0].Cells.Count);
+    Assert.AreEqual(2, LTable.Rows[0].Cells[0].ColSpan);
   finally
     LDocument.Free;
   end;

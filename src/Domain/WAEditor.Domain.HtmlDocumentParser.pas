@@ -973,6 +973,8 @@ var
   LBorder: Integer;
   LInputType: string;
   LColumnWidth: Integer;
+  LGridIndex, LSpanIndex, LColSpan: Integer;
+  LColWidthParts: TArray<string>;
   LImageData: TBytes;
   LImageFormat: string;
   LImageWidthPx, LImageHeightPx: Integer;
@@ -1132,20 +1134,39 @@ begin
   begin
     if FCurrentRow <> nil then
     begin
+      // Widths are per grid column, so a cell's column is the sum of the
+      // spans of the cells before it, not its index in the row.
+      LGridIndex := 0;
+      for LSpanIndex := 0 to FCurrentRow.Cells.Count - 1 do
+        Inc(LGridIndex, FCurrentRow.Cells[LSpanIndex].ColSpan);
+      LColSpan := StrToIntDef(Trim(ExtractAttribute(AAttributes, 'colspan')), 1);
+      if LColSpan < 1 then
+        LColSpan := 1;
       // <colgroup><col> (handled above) is preferred; "colwidth" on the
-      // cell itself (MSHTML's own per-cell width attribute) is only a
-      // fallback for whichever columns colgroup didn't already cover.
-      if (FCurrentTable <> nil) and (FCurrentRow.Cells.Count >= Length(FCurrentTable.ColumnWidths)) then
+      // cell itself (one px value per grid column it covers, "120,80" for
+      // colspan="2") is only a fallback for the columns colgroup didn't
+      // already cover.
+      if FCurrentTable <> nil then
       begin
-        LColumnWidth := ExtractColumnWidthInTwips(AAttributes, 'colwidth');
-        if LColumnWidth > 0 then
-        begin
-          SetLength(FCurrentTable.ColumnWidths, FCurrentRow.Cells.Count + 1);
-          FCurrentTable.ColumnWidths[FCurrentRow.Cells.Count] := LColumnWidth;
-        end;
+        LColWidthParts := ExtractAttribute(AAttributes, 'colwidth').Split([',']);
+        for LSpanIndex := 0 to LColSpan - 1 do
+          if (LGridIndex + LSpanIndex = Length(FCurrentTable.ColumnWidths)) and
+             (LSpanIndex < Length(LColWidthParts)) then
+          begin
+            LColumnWidth := StrToIntDef(Trim(StringReplace(LColWidthParts[LSpanIndex],
+              'px', '', [rfIgnoreCase])), 0) * 15;
+            if LColumnWidth <= 0 then
+              Break;
+            SetLength(FCurrentTable.ColumnWidths, LGridIndex + LSpanIndex + 1);
+            FCurrentTable.ColumnWidths[LGridIndex + LSpanIndex] := LColumnWidth;
+          end;
       end;
-      RecordCellWidth(FCurrentRow.Cells.Count, AAttributes);
+      // A width on a spanning cell covers several columns at once and says
+      // nothing about each of them, so only single cells set a column.
+      if LColSpan = 1 then
+        RecordCellWidth(LGridIndex, AAttributes);
       FCurrentCell := FCurrentRow.AddCell;
+      FCurrentCell.ColSpan := LColSpan;
       FCurrentCell.Alignment := ParseAlignmentAttribute(AAttributes, taLeftAlign);
     end;
   end
