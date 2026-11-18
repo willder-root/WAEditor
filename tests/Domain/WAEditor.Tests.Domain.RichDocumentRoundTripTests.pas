@@ -53,6 +53,8 @@ type
     [Test]
     procedure RtfToHtmlToRtf_PreservesHorizontalMerge;
     [Test]
+    procedure RtfToHtmlToRtf_KeepsWPToolsFormMergesThroughFullCycle;
+    [Test]
     procedure RtfToHtmlToRtf_KeepsRowsWithDifferentCellx;
   end;
 
@@ -432,6 +434,122 @@ begin
     Assert.AreEqual(4, Length(TWATableBlock(LFromRtf.Blocks[0]).ColumnWidths));
   finally
     LFromRtf.Free;
+  end;
+end;
+
+procedure TWARichDocumentRoundTripTests.RtfToHtmlToRtf_KeepsWPToolsFormMergesThroughFullCycle;
+const
+  // Rows of the AIH form (model 1031) exactly as WPTools writes them: a
+  // merge is the first cell WITHOUT any flag followed by \clmrg cells (no
+  // \clmgf), and other rows simply have their own, fewer \cellx.
+  WPTOOLS_FORM =
+    '{\rtf1\ansi\deff0{\tblstart1' +
+    '{\trowd\trleft-30\clbrdrb\brdrs\brdrw15\cellx3299\cellx4309' +
+    '\clmrg\cellx5382\clmrg\cellx6392\clmrg\cellx7403\clmrg\cellx8886' +
+    '\pard\intbl\itap1\qc Sistema\cell\pard\intbl\itap1\qc Laudo\cell' +
+    '\pard\intbl\itap1\cell\pard\intbl\itap1\cell\pard\intbl\itap1\cell\pard\intbl\itap1\cell\row}' +
+    '{\trowd\trleft-30\clbrdrb\brdrs\brdrw15\cellx7403\cellx8886' +
+    '\pard\intbl\itap1 Nome\cell\pard\intbl\itap1\qc CNES\cell\row}' +
+    '{\trowd\trleft-30\clbrdrb\brdrs\brdrw15\cellx3299\cellx4309\cellx5382\cellx7403\cellx8886' +
+    '\pard\intbl\itap1 CNS\cell\pard\intbl\itap1 Nasc\cell\pard\intbl\itap1 Sexo\cell' +
+    '\pard\intbl\itap1 Cor\cell\pard\intbl\itap1 Etnia\cell\row}' +
+    '{\trowd\trleft-30\clbrdrb\brdrs\brdrw15\cellx8869' +
+    '\pard\intbl\itap1 Endereco\cell\row}\tblend1}}';
+
+  procedure AssertSpans(ADocument: TWARichDocument; const AStage: string);
+  var
+    LTable: TWATableBlock;
+  begin
+    LTable := TWATableBlock(ADocument.Blocks[0]);
+    // Edges 3299 4309 5382 6392 7403 8886 (8869 is the same edge as 8886,
+    // within the 10px tolerance): 6 grid columns.
+    Assert.AreEqual(6, Length(LTable.ColumnWidths), AStage + ': grid');
+    Assert.AreEqual(2, LTable.Rows[0].Cells.Count, AStage + ': row 0');
+    Assert.AreEqual(1, LTable.Rows[0].Cells[0].ColSpan, AStage + ': Sistema');
+    Assert.AreEqual(5, LTable.Rows[0].Cells[1].ColSpan, AStage + ': Laudo');
+    Assert.AreEqual(5, LTable.Rows[1].Cells[0].ColSpan, AStage + ': Nome');
+    Assert.AreEqual(1, LTable.Rows[1].Cells[1].ColSpan, AStage + ': CNES');
+    Assert.AreEqual(5, LTable.Rows[2].Cells.Count, AStage + ': row 2');
+    Assert.AreEqual(2, LTable.Rows[2].Cells[3].ColSpan, AStage + ': Cor');
+    Assert.AreEqual(1, LTable.Rows[3].Cells.Count, AStage + ': row 3');
+    Assert.AreEqual(6, LTable.Rows[3].Cells[0].ColSpan, AStage + ': Endereco');
+  end;
+
+  // Right edge (twips) of every visible cell of every row: what is
+  // actually drawn, independent of how many grid columns describe it.
+  function VisibleCellEdges(ADocument: TWARichDocument): TArray<TArray<Integer>>;
+  var
+    LTable: TWATableBlock;
+    LRowIndex, LCellIndex, LGridIndex, LSpan, LEdge: Integer;
+  begin
+    LTable := TWATableBlock(ADocument.Blocks[0]);
+    SetLength(Result, LTable.Rows.Count);
+    for LRowIndex := 0 to LTable.Rows.Count - 1 do
+    begin
+      SetLength(Result[LRowIndex], LTable.Rows[LRowIndex].Cells.Count);
+      LGridIndex := 0;
+      LEdge := LTable.LeftOffsetTwips;
+      for LCellIndex := 0 to LTable.Rows[LRowIndex].Cells.Count - 1 do
+      begin
+        for LSpan := 1 to LTable.Rows[LRowIndex].Cells[LCellIndex].ColSpan do
+        begin
+          Inc(LEdge, LTable.ColumnWidths[LGridIndex]);
+          Inc(LGridIndex);
+        end;
+        Result[LRowIndex][LCellIndex] := LEdge;
+      end;
+    end;
+  end;
+
+var
+  LDocument: TWARichDocument;
+  LHtml, LRtf: string;
+  LOriginalEdges, LFinalEdges: TArray<TArray<Integer>>;
+  LRowIndex, LCellIndex: Integer;
+begin
+  // Reported case: merged form cells were lost when the editor saved the
+  // document. The whole cycle (open: RTF -> HTML, save: HTML -> RTF, open
+  // again) must keep every merge.
+  LDocument := TWARtfDocumentParser.Parse(WPTOOLS_FORM);
+  try
+    AssertSpans(LDocument, 'RTF');
+    LOriginalEdges := VisibleCellEdges(LDocument);
+    LHtml := TWAHtmlDocumentRenderer.Render(LDocument);
+  finally
+    LDocument.Free;
+  end;
+  Assert.Contains(LHtml, 'colspan="5"');
+
+  LDocument := TWAHtmlDocumentParser.Parse(LHtml);
+  try
+    AssertSpans(LDocument, 'HTML');
+    LRtf := TWARtfDocumentRenderer.Render(LDocument);
+  finally
+    LDocument.Free;
+  end;
+  // Written the WPTools way: one \cellx per visible cell, no merge pair.
+  Assert.IsFalse(LRtf.Contains('\clmgf'));
+  Assert.IsFalse(LRtf.Contains('\clmrg'));
+
+  // Reopened, every row has the same visible cells ending at the same
+  // edges (within the px rounding of the HTML step). An edge that only
+  // existed INSIDE a merge (6392, under "Laudo") is not drawn by any cell,
+  // so the grid may describe the table with one column fewer.
+  LDocument := TWARtfDocumentParser.Parse(LRtf);
+  try
+    LFinalEdges := VisibleCellEdges(LDocument);
+  finally
+    LDocument.Free;
+  end;
+  Assert.AreEqual(Length(LOriginalEdges), Length(LFinalEdges), 'row count');
+  for LRowIndex := 0 to High(LOriginalEdges) do
+  begin
+    Assert.AreEqual(Length(LOriginalEdges[LRowIndex]), Length(LFinalEdges[LRowIndex]),
+      Format('cells in row %d', [LRowIndex]));
+    for LCellIndex := 0 to High(LOriginalEdges[LRowIndex]) do
+      Assert.IsTrue(Abs(LOriginalEdges[LRowIndex][LCellIndex] - LFinalEdges[LRowIndex][LCellIndex]) <= 100,
+        Format('edge of row %d cell %d: %d -> %d', [LRowIndex, LCellIndex,
+          LOriginalEdges[LRowIndex][LCellIndex], LFinalEdges[LRowIndex][LCellIndex]]));
   end;
 end;
 
