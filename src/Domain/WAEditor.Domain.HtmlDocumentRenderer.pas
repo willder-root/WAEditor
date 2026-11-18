@@ -147,12 +147,30 @@ var
   LColumnWidthPx: Integer;
   LGridIndex, LSpanIndex: Integer;
   LColWidthList: string;
+  LTableStyle: string;
+  LTableWidthPx: Integer;
 begin
   LBuilder := TStringBuilder.Create;
   try
     LBuilder.AppendFormat('<table border="%d"', [ATable.BorderWidth]);
+    // With known column widths the table is laid out as fixed, at the sum
+    // of its columns: the browser's default auto layout (what Jodit uses)
+    // treats <col> widths only as hints and redistributes the columns by
+    // content, so in a form with merged cells a long text in a wide merge
+    // squeezes the narrow columns (the 219px "Sistema Unico de Saude"
+    // column of the AIH form came out ~85px wide).
+    LTableStyle := '';
+    if Length(ATable.ColumnWidths) > 0 then
+    begin
+      LTableWidthPx := 0;
+      for I := 0 to High(ATable.ColumnWidths) do
+        Inc(LTableWidthPx, ATable.ColumnWidths[I] div 15);
+      LTableStyle := Format('table-layout: fixed; width: %dpx;', [LTableWidthPx]);
+    end;
     if ATable.LeftOffsetTwips > 0 then
-      LBuilder.AppendFormat(' style="margin-left: %dpx;"', [Round(ATable.LeftOffsetTwips / 15)]);
+      LTableStyle := LTableStyle + Format(' margin-left: %dpx;', [Round(ATable.LeftOffsetTwips / 15)]);
+    if LTableStyle <> '' then
+      LBuilder.AppendFormat(' style="%s"', [Trim(LTableStyle)]);
     LBuilder.Append('>');
     // Twips -> px at the standard 96dpi reference (1px = 15 twips),
     // written back out as <colgroup><col> (and each <td>'s colwidth,

@@ -23,6 +23,8 @@ type
 
     [Test]
     procedure Render_Table_EmitsRowsAndCells;
+    [Test]
+    procedure Render_TableWithColumnWidths_IsFixedLayoutAtColumnSum;
 
     [Test]
     procedure Render_EscapesHtmlSpecialCharactersInText;
@@ -111,6 +113,30 @@ begin
 
     Assert.Contains(LHtml, 'font-family:''Consolas''');
     Assert.Contains(LHtml, 'font-size:18pt');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentRendererTests.Render_TableWithColumnWidths_IsFixedLayoutAtColumnSum;
+var
+  LDocument: TWARichDocument;
+  LTable: TWATableBlock;
+  LHtml: string;
+begin
+  // Reported case (AIH form in Jodit): with the browser's auto layout a
+  // long text in a wide merged cell squeezed the narrow 219px column to
+  // ~85px. A fixed layout at the columns' sum makes <col> widths exact.
+  LDocument := TWARichDocument.Create;
+  try
+    LTable := LDocument.AddTable(1, 2, 1);
+    LTable.ColumnWidths := TArray<Integer>.Create(3285, 1500);
+    LTable.LeftOffsetTwips := 300;
+    LHtml := TWAHtmlDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LHtml,
+      '<table border="1" style="table-layout: fixed; width: 319px; margin-left: 20px;">');
+    Assert.Contains(LHtml, '<col style="width:219px;">');
   finally
     LDocument.Free;
   end;
