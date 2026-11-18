@@ -415,11 +415,24 @@ begin
     LFromHtml.Free;
   end;
 
-  Assert.Contains(LRtfAgain, '\clmgf');
-  Assert.AreEqual(2, Length(LRtfAgain.Split(['\clmrg'])) - 1);
-  Assert.Contains(LRtfAgain, '\cellx4500');
-  // Both rows still have 4 grid cells: 4 + 4 \cell (not counting \cellx).
-  Assert.AreEqual(8, Length(LRtfAgain.Split(['\cell' + sLineBreak])) - 1);
+  // The merged cell goes back as ONE wide cell ending at the third grid
+  // edge (the way WPTools writes merged form rows), not as \clmgf/\clmrg,
+  // which WPTools does not honor when reading.
+  Assert.IsFalse(LRtfAgain.Contains('\clmgf'));
+  Assert.IsFalse(LRtfAgain.Contains('\clmrg'));
+  Assert.Contains(LRtfAgain, '\trowd\cellx4500\cellx6000');
+  Assert.Contains(LRtfAgain, '\trowd\cellx1500\cellx3000\cellx4500\cellx6000');
+  // 2 visible cells + 4 visible cells.
+  Assert.AreEqual(6, Length(LRtfAgain.Split(['\cell' + sLineBreak])) - 1);
+
+  // And it reads back as the same merge.
+  LFromRtf := TWARtfDocumentParser.Parse(LRtfAgain);
+  try
+    Assert.AreEqual(3, TWATableBlock(LFromRtf.Blocks[0]).Rows[0].Cells[0].ColSpan);
+    Assert.AreEqual(4, Length(TWATableBlock(LFromRtf.Blocks[0]).ColumnWidths));
+  finally
+    LFromRtf.Free;
+  end;
 end;
 
 procedure TWARichDocumentRoundTripTests.RtfToHtmlToRtf_KeepsRowsWithDifferentCellx;
@@ -452,10 +465,8 @@ begin
     LFromHtml.Free;
   end;
 
-  Assert.Contains(LRtfAgain, '\clmgf');
-  Assert.AreEqual(1, Length(LRtfAgain.Split(['\clmrg'])) - 1);
-  Assert.Contains(LRtfAgain, '\cellx3000');
-  Assert.Contains(LRtfAgain, '\cellx4500');
+  Assert.IsFalse(LRtfAgain.Contains('\clmgf'));
+  Assert.Contains(LRtfAgain, '\trowd\cellx3000\cellx4500');
   Assert.IsFalse(LRtfAgain.Contains('\cellx2000'));
 end;
 

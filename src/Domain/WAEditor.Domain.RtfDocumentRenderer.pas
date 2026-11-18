@@ -355,12 +355,18 @@ begin
       // per-column widths, so they must be summed rather than just
       // multiplying the column index by a fixed width once real widths
       // are known.
-      // One \cellx per grid column: a cell spanning N columns (colspan)
-      // is written as N grid cells, the first marked \clmgf and the rest
-      // \clmrg, which is how RTF readers (WPTools, Word) merge cells.
+      // One \cellx per visible cell, at the right edge of the last grid
+      // column it covers: a cell spanning N columns (colspan) is a single
+      // wide cell, and each row carries its own \cellx set. This is how
+      // WPTools itself writes merged form rows, and every RTF reader
+      // understands it; the legacy \clmgf/\clmrg pair is not honored by
+      // WPTools when reading, which split every merged cell back into
+      // its grid columns. The parser rebuilds the colspans from the
+      // union of all rows' edges.
       LCumulativeWidth := ATable.LeftOffsetTwips;
       I := 0;
       for LCell in LRow.Cells do
+      begin
         for LSpanIndex := 0 to LCell.ColSpan - 1 do
         begin
           // Each grid column keeps its own width, also in a row that
@@ -371,17 +377,11 @@ begin
             Inc(LCumulativeWidth, ATable.ColumnWidths[I])
           else
             Inc(LCumulativeWidth, WA_TWIPS_PER_COLUMN);
-          if LCell.ColSpan > 1 then
-          begin
-            if LSpanIndex = 0 then
-              LBuilder.Append('\clmgf')
-            else
-              LBuilder.Append('\clmrg');
-          end;
-          LBuilder.Append(LCellBorders);
-          LBuilder.AppendFormat('\cellx%d', [LCumulativeWidth]);
           Inc(I);
         end;
+        LBuilder.Append(LCellBorders);
+        LBuilder.AppendFormat('\cellx%d', [LCumulativeWidth]);
+      end;
       LBuilder.Append(sLineBreak);
       for LCell in LRow.Cells do
       begin
@@ -394,9 +394,6 @@ begin
         for LRun in LCell.Runs do
           LBuilder.Append(RenderRunGroup(LRun, AFontTable));
         LBuilder.Append('\cell').Append(sLineBreak);
-        // The \clmrg grid cells still need their own (empty) \cell.
-        for LSpanIndex := 1 to LCell.ColSpan - 1 do
-          LBuilder.Append('\pard\intbl \cell').Append(sLineBreak);
       end;
       LBuilder.Append('\row').Append(sLineBreak);
     end;
