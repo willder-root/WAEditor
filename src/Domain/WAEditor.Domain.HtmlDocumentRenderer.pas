@@ -32,6 +32,33 @@ begin
   Result := StringReplace(Result, '"', '&quot;', [rfReplaceAll]);
 end;
 
+/// Escapes run text and keeps its spaces visible. RTF spaces are all
+/// significant, but HTML collapses a run of spaces into one and drops a
+/// space that stands alone, so a space that opens the run or follows
+/// another space is written as &nbsp;. Without it a cell or line holding
+/// only a space (what an empty cell becomes after one round trip) came
+/// back as a collapsed "<td> </td>", and form blanks such as "(   ) CNS"
+/// showed as "( ) CNS".
+function EscapeHtmlText(const AText: string): string;
+var
+  LBuilder: TStringBuilder;
+  I: Integer;
+  LEscaped: string;
+begin
+  LEscaped := EscapeHtml(AText);
+  LBuilder := TStringBuilder.Create;
+  try
+    for I := 1 to Length(LEscaped) do
+      if (LEscaped[I] = ' ') and ((I = 1) or (LEscaped[I - 1] = ' ')) then
+        LBuilder.Append('&nbsp;')
+      else
+        LBuilder.Append(LEscaped[I]);
+    Result := LBuilder.ToString;
+  finally
+    LBuilder.Free;
+  end;
+end;
+
 function RenderRun(ARun: TWARun): string;
 var
   LStyle: string;
@@ -70,7 +97,7 @@ begin
     Exit(Result + '>');
   end;
 
-  Result := EscapeHtml(ARun.Text);
+  Result := EscapeHtmlText(ARun.Text);
   if ARun.Format.Underline then
     Result := '<u>' + Result + '</u>';
   if ARun.Format.Italic then
@@ -137,6 +164,37 @@ begin
   end;
 end;
 
+/// Twips -> nearest px (half up) at 1px = 15 twips.
+function TwipsToNearestPx(ATwips: Integer): Integer;
+begin
+  if ATwips >= 0 then
+    Result := (ATwips * 2 + 15) div 30
+  else
+    Result := -((-ATwips * 2 + 15) div 30);
+end;
+
+/// Column widths in px taken from the rounded cumulative column edges, not
+/// from each width on its own: truncating every column separately lost up
+/// to 14 twips per column, and the losses added up along the row (the AIH
+/// form's right edge came back 49 twips short after RTF -> HTML -> RTF).
+/// Rounding the edges keeps every edge within 7 twips of the original and
+/// the error never accumulates.
+function ColumnWidthsInPx(ATable: TWATableBlock): TArray<Integer>;
+var
+  I, LEdgeTwips, LPreviousEdgePx, LEdgePx: Integer;
+begin
+  SetLength(Result, Length(ATable.ColumnWidths));
+  LEdgeTwips := 0;
+  LPreviousEdgePx := 0;
+  for I := 0 to High(ATable.ColumnWidths) do
+  begin
+    Inc(LEdgeTwips, ATable.ColumnWidths[I]);
+    LEdgePx := TwipsToNearestPx(LEdgeTwips);
+    Result[I] := LEdgePx - LPreviousEdgePx;
+    LPreviousEdgePx := LEdgePx;
+  end;
+end;
+
 function RenderTable(ATable: TWATableBlock): string;
 var
   LBuilder: TStringBuilder;
@@ -144,12 +202,13 @@ var
   LCell: TWATableCell;
   LRun: TWARun;
   I: Integer;
-  LColumnWidthPx: Integer;
+  LColumnWidthsPx: TArray<Integer>;
   LGridIndex, LSpanIndex: Integer;
   LColWidthList: string;
   LTableStyle: string;
   LTableWidthPx: Integer;
 begin
+  LColumnWidthsPx := ColumnWidthsInPx(ATable);
   LBuilder := TStringBuilder.Create;
   try
     LBuilder.AppendFormat('<table border="%d"', [ATable.BorderWidth]);
@@ -163,8 +222,8 @@ begin
     if Length(ATable.ColumnWidths) > 0 then
     begin
       LTableWidthPx := 0;
-      for I := 0 to High(ATable.ColumnWidths) do
-        Inc(LTableWidthPx, ATable.ColumnWidths[I] div 15);
+      for I := 0 to High(LColumnWidthsPx) do
+        Inc(LTableWidthPx, LColumnWidthsPx[I]);
       LTableStyle := Format('table-layout: fixed; width: %dpx;', [LTableWidthPx]);
     end;
     if ATable.LeftOffsetTwips > 0 then
@@ -180,8 +239,8 @@ begin
     if Length(ATable.ColumnWidths) > 0 then
     begin
       LBuilder.Append('<colgroup>');
-      for I := 0 to High(ATable.ColumnWidths) do
-        LBuilder.AppendFormat('<col style="width:%dpx;">', [ATable.ColumnWidths[I] div 15]);
+      for I := 0 to High(LColumnWidthsPx) do
+        LBuilder.AppendFormat('<col style="width:%dpx;">', [LColumnWidthsPx[I]]);
       LBuilder.Append('</colgroup>');
     end;
     for LRow in ATable.Rows do
@@ -198,13 +257,12 @@ begin
         // ("120,80" for colspan="2"), as the editor itself writes it.
         LColWidthList := '';
         for LSpanIndex := 0 to LCell.ColSpan - 1 do
-          if (LGridIndex + LSpanIndex < Length(ATable.ColumnWidths)) and
-             (ATable.ColumnWidths[LGridIndex + LSpanIndex] > 0) then
+          if (LGridIndex + LSpanIndex < Length(LColumnWidthsPx)) and
+             (LColumnWidthsPx[LGridIndex + LSpanIndex] > 0) then
           begin
-            LColumnWidthPx := ATable.ColumnWidths[LGridIndex + LSpanIndex] div 15;
             if LColWidthList <> '' then
               LColWidthList := LColWidthList + ',';
-            LColWidthList := LColWidthList + IntToStr(LColumnWidthPx);
+            LColWidthList := LColWidthList + IntToStr(LColumnWidthsPx[LGridIndex + LSpanIndex]);
           end
           else
           begin

@@ -27,6 +27,12 @@ type
     procedure Render_TableWithColumnWidths_IsFixedLayoutAtColumnSum;
 
     [Test]
+    procedure Render_ColumnWidths_RoundTheEdgesInsteadOfTruncatingEachColumn;
+
+    [Test]
+    procedure Render_SpacesHtmlWouldCollapse_AreWrittenAsNbsp;
+
+    [Test]
     procedure Render_EscapesHtmlSpecialCharactersInText;
 
     [Test]
@@ -137,6 +143,57 @@ begin
     Assert.Contains(LHtml,
       '<table border="1" style="table-layout: fixed; width: 319px; margin-left: 20px;">');
     Assert.Contains(LHtml, '<col style="width:219px;">');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentRendererTests.Render_ColumnWidths_RoundTheEdgesInsteadOfTruncatingEachColumn;
+var
+  LDocument: TWARichDocument;
+  LTable: TWATableBlock;
+  LHtml: string;
+begin
+  // AIH form columns (twips). Truncating each width on its own gave
+  // 219+67+71 = 357px (5355 twips) for an edge at 5382; the losses added
+  // up to 49 twips at the table's right edge. Rounding the edges
+  // (3299 -> 220, 4309 -> 287, 5382 -> 359) keeps each one within 7 twips.
+  LDocument := TWARichDocument.Create;
+  try
+    LTable := LDocument.AddTable(1, 3, 1);
+    LTable.ColumnWidths := TArray<Integer>.Create(3299, 1010, 1073);
+    LHtml := TWAHtmlDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LHtml, 'width: 359px;');
+    Assert.Contains(LHtml,
+      '<colgroup><col style="width:220px;"><col style="width:67px;"><col style="width:72px;"></colgroup>');
+    Assert.Contains(LHtml, '<td colwidth="220">');
+    Assert.Contains(LHtml, '<td colwidth="72">');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentRendererTests.Render_SpacesHtmlWouldCollapse_AreWrittenAsNbsp;
+var
+  LDocument: TWARichDocument;
+  LTable: TWATableBlock;
+  LHtml: string;
+begin
+  // RTF keeps every space; HTML collapses consecutive spaces and drops a
+  // lone one. A cell holding just a space (an empty cell after one round
+  // trip) must not become a collapsed "<td> </td>", and form blanks such
+  // as "(   ) CNS" must keep their width. A single space between words
+  // stays a normal space.
+  LDocument := TWARichDocument.Create;
+  try
+    LTable := LDocument.AddTable(1, 2, 1);
+    LTable.Rows[0].Cells[0].AddRun('(   ) CNS', TWARunFormat.Plain);
+    LTable.Rows[0].Cells[1].AddRun(' ', TWARunFormat.Plain);
+    LHtml := TWAHtmlDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LHtml, '>( &nbsp;&nbsp;) CNS</td>');
+    Assert.Contains(LHtml, '>&nbsp;</td>');
   finally
     LDocument.Free;
   end;

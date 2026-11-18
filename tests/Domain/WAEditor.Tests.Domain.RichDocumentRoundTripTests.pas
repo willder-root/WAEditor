@@ -503,7 +503,7 @@ const
 
 var
   LDocument: TWARichDocument;
-  LHtml, LRtf: string;
+  LHtml, LRtf, LHtmlAgain: string;
   LOriginalEdges, LFinalEdges: TArray<TArray<Integer>>;
   LRowIndex, LCellIndex: Integer;
 begin
@@ -532,12 +532,22 @@ begin
   Assert.IsFalse(LRtf.Contains('\clmrg'));
 
   // Reopened, every row has the same visible cells ending at the same
-  // edges (within the px rounding of the HTML step). An edge that only
+  // edges, within the px rounding of the HTML step: half a px (7 twips),
+  // since the column edges, not each width, are rounded. An edge that only
   // existed INSIDE a merge (6392, under "Laudo") is not drawn by any cell,
   // so the grid may describe the table with one column fewer.
   LDocument := TWARtfDocumentParser.Parse(LRtf);
   try
     LFinalEdges := VisibleCellEdges(LDocument);
+    LHtmlAgain := TWAHtmlDocumentRenderer.Render(LDocument);
+  finally
+    LDocument.Free;
+  end;
+  // From the first cycle on the conversion is stable: opening and saving
+  // the saved document again writes the very same RTF.
+  LDocument := TWAHtmlDocumentParser.Parse(LHtmlAgain);
+  try
+    Assert.AreEqual(LRtf, TWARtfDocumentRenderer.Render(LDocument), 'RTF after a second cycle');
   finally
     LDocument.Free;
   end;
@@ -547,7 +557,7 @@ begin
     Assert.AreEqual(Length(LOriginalEdges[LRowIndex]), Length(LFinalEdges[LRowIndex]),
       Format('cells in row %d', [LRowIndex]));
     for LCellIndex := 0 to High(LOriginalEdges[LRowIndex]) do
-      Assert.IsTrue(Abs(LOriginalEdges[LRowIndex][LCellIndex] - LFinalEdges[LRowIndex][LCellIndex]) <= 100,
+      Assert.IsTrue(Abs(LOriginalEdges[LRowIndex][LCellIndex] - LFinalEdges[LRowIndex][LCellIndex]) <= 7,
         Format('edge of row %d cell %d: %d -> %d', [LRowIndex, LCellIndex,
           LOriginalEdges[LRowIndex][LCellIndex], LFinalEdges[LRowIndex][LCellIndex]]));
   end;
