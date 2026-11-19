@@ -44,6 +44,11 @@ type
     FCurrentAlignment: TWATextAlignment;
     FCurrentHasBorder: Boolean;
     FPendingTableLeft: Integer;
+    // Signed \trleft and the row's width in twips (\trwWidth when
+    // \trftsWidth3), used to fit the row to the table's right edge.
+    FPendingRowLeft: Integer;
+    FPendingRowWidthUnit: Integer;
+    FPendingRowWidth: Integer;
     FCurrentLeftIndent: Integer;
     FCurrentRightIndent: Integer;
     FCurrentFirstLineIndent: Integer;
@@ -491,6 +496,9 @@ begin
       FPendingMerge := 0;
       FCurrentGridIndex := 0;
       FPendingTableLeft := 0;
+      FPendingRowLeft := 0;
+      FPendingRowWidthUnit := 0;
+      FPendingRowWidth := 0;
     end;
   end
   else if AName = 'trleft' then
@@ -499,8 +507,20 @@ begin
     // values that follow are absolute, so it is subtracted from the first
     // column below. Negative values (Word's cell-padding compensation)
     // are not modeled and keep the old flush-left reading.
+    if AHasParam then
+      FPendingRowLeft := AParam;
     if AHasParam and (AParam > 0) then
       FPendingTableLeft := AParam;
+  end
+  else if AName = 'trftsWidth' then
+  begin
+    if AHasParam then
+      FPendingRowWidthUnit := AParam;
+  end
+  else if AName = 'trwWidth' then
+  begin
+    if AHasParam then
+      FPendingRowWidth := AParam;
   end
   else if AName = 'cellx' then
   begin
@@ -744,10 +764,31 @@ procedure TWARtfParserState.RecordRowCellEdges;
 // spanning N grid cells (\clmgf + \clmrg) ends at the \cellx of its last
 // one. A row that ends with bare \cell words (no \intbl, so no cell in the
 // model) simply has fewer edges.
+//
+// A row with a width in twips (\trftsWidth3\trwWidth, as WPTools writes
+// every row) is fitted to it, the way WPTools draws it: the row ends at
+// \trleft + \trwWidth, so a row whose last \cellx falls short is widened
+// to the table's right edge and one that goes past it is cut there. The
+// AIH form has rows ending at 8475 and 9896 in a 8886-wide table; WPTools
+// shows them all flush, and without the fit they came out ragged, with
+// cells sticking out of the table, both in the editor and in the RTF
+// written back (which carries no \trwWidth).
 var
-  LEdges: TArray<Integer>;
-  LCellIndex, LGridEnd, LCellxIndex: Integer;
+  LEdges, LGridEdges: TArray<Integer>;
+  LCellIndex, LGridEnd, LCellxIndex, LRowRight, I: Integer;
 begin
+  LGridEdges := FPendingCellxValues.ToArray;
+  if (FPendingRowWidthUnit = 3) and (FPendingRowWidth > 0) and (Length(LGridEdges) > 0) then
+  begin
+    LRowRight := FPendingRowLeft + FPendingRowWidth;
+    for I := 0 to High(LGridEdges) do
+      if LGridEdges[I] > LRowRight then
+        LGridEdges[I] := LRowRight;
+    LGridEdges[High(LGridEdges)] := LRowRight;
+    for I := 0 to High(LGridEdges) do
+      FPendingCellxValues[I] := LGridEdges[I];
+  end;
+
   SetLength(LEdges, FCurrentRow.Cells.Count);
   LGridEnd := 0;
   for LCellIndex := 0 to FCurrentRow.Cells.Count - 1 do
@@ -759,7 +800,7 @@ begin
     LEdges[LCellIndex] := FPendingCellxValues[LCellxIndex];
   end;
   FRowCellEdges.AddOrSetValue(FCurrentRow, LEdges);
-  FRowGridEdges.AddOrSetValue(FCurrentRow, FPendingCellxValues.ToArray);
+  FRowGridEdges.AddOrSetValue(FCurrentRow, LGridEdges);
 end;
 
 procedure TWARtfParserState.RebuildTableGrid(ATable: TWATableBlock);

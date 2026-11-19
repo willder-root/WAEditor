@@ -3,6 +3,7 @@ unit WAEditor.Tests.Domain.RtfDocumentParserTests;
 interface
 
 uses
+  System.SysUtils,
   DUnitX.TestFramework,
   WAEditor.Domain.Types,
   WAEditor.Domain.RichDocument,
@@ -103,6 +104,9 @@ type
     procedure Parse_RowsWithDifferentCellx_ShareUnionGrid;
     [Test]
     procedure Parse_RowWithNewEdge_SplitsGridForEveryRow;
+
+    [Test]
+    procedure Parse_RowsWithTwipsWidth_AreFittedToTheTableRightEdge;
 
     [Test]
     procedure Parse_CellBordersWithoutWidth_AreBorderedWithDefaultWidth;
@@ -720,6 +724,57 @@ begin
     Assert.AreEqual(1, LTable.Rows[1].Cells[1].ColSpan);
     Assert.AreEqual(1, LTable.Rows[2].Cells[0].ColSpan);
     Assert.AreEqual(2, LTable.Rows[2].Cells[1].ColSpan);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_RowsWithTwipsWidth_AreFittedToTheTableRightEdge;
+var
+  LDocument: TWARichDocument;
+  LTable: TWATableBlock;
+  LRowIndex, LCellIndex, LGridIndex, LSpan, LEdge: Integer;
+begin
+  // AIH form (WPTools): every row says \trftsWidth3\trwWidth8916 with
+  // \trleft-30, so it ends at 8886. WPTools draws a row ending at 8475
+  // widened to 8886 and one ending at 9896 cut at 8886; without the fit
+  // they came out ragged, with a cell sticking out of the table.
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0 {' +
+    '{\trowd\trleft-30\trftsWidth3\trwWidth8916\cellx7403\cellx8886' +
+    '\pard\intbl {Nome}\cell\pard\intbl {CNES}\cell\row}' +
+    '{\trowd\trleft-30\trftsWidth3\trwWidth8916\cellx6392\cellx8473\cellx9896' +
+    '\pard\intbl {Mae}\cell\pard\intbl {Telefone}\cell\pard\intbl \cell\row}' +
+    '{\trowd\trleft-30\trftsWidth3\trwWidth8916\cellx6392\cellx7402\clmrg\cellx8475' +
+    '\pard\intbl {MAE}\cell\pard\intbl {TEL}\cell\pard\intbl \cell\row}' +
+    '{\trowd\cellx3000' +
+    '\pard\intbl {Sem largura}\cell\row}}}');
+  try
+    LTable := TWATableBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(4, LTable.Rows.Count);
+    // Right edge of the last cell of each row
+    for LRowIndex := 0 to 2 do
+    begin
+      LEdge := LTable.LeftOffsetTwips;
+      LGridIndex := 0;
+      for LCellIndex := 0 to LTable.Rows[LRowIndex].Cells.Count - 1 do
+        for LSpan := 1 to LTable.Rows[LRowIndex].Cells[LCellIndex].ColSpan do
+        begin
+          Inc(LEdge, LTable.ColumnWidths[LGridIndex]);
+          Inc(LGridIndex);
+        end;
+      Assert.AreEqual(8886, LEdge, 'right edge of row ' + LRowIndex.ToString);
+    end;
+    // No grid column past the table's right edge (9896 is gone)
+    LEdge := 0;
+    for LGridIndex := 0 to High(LTable.ColumnWidths) do
+      Inc(LEdge, LTable.ColumnWidths[LGridIndex]);
+    Assert.AreEqual(8886, LEdge, 'grid width');
+    Assert.AreEqual(3, LTable.Rows[1].Cells.Count);
+    Assert.AreEqual(2, LTable.Rows[2].Cells.Count);
+    // A row without \trwWidth keeps its own \cellx (3000)
+    Assert.AreEqual(1, LTable.Rows[3].Cells.Count);
+    Assert.AreEqual(3000, LTable.ColumnWidths[0]);
   finally
     LDocument.Free;
   end;
