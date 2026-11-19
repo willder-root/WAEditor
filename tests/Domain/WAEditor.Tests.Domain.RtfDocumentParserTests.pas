@@ -149,6 +149,15 @@ type
 
     [Test]
     procedure Parse_FormCheckboxRadioInsideTableCell_ProducesRadioRunInCell;
+
+    [Test]
+    procedure Parse_ColorTableAndCf_SetsRunColor;
+
+    [Test]
+    procedure Parse_WPToolsShadedCell_SetsBackgroundAndTextColor;
+
+    [Test]
+    procedure Parse_CellShadingWithoutPatternColor_BlendsOverWhite;
   end;
 
 implementation
@@ -1163,6 +1172,74 @@ begin
     Assert.AreEqual('Linha um', LCell.Runs[0].Text);
     Assert.IsTrue(LCell.Runs[1].IsLineBreak);
     Assert.AreEqual('Linha dois', LCell.Runs[2].Text);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_ColorTableAndCf_SetsRunColor;
+var
+  LDocument: TWARichDocument;
+  LParagraph: TWAParagraphBlock;
+begin
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}' +
+    '\pard{\cf1 Red}{\cf2 Blue}{\cf0 Auto}\par}');
+  try
+    LParagraph := TWAParagraphBlock(LDocument.Blocks[0]);
+    Assert.AreEqual(3, LParagraph.Runs.Count);
+    Assert.IsTrue(LParagraph.Runs[0].Format.HasColor);
+    Assert.AreEqual(Integer($FF0000), LParagraph.Runs[0].Format.Color);
+    Assert.AreEqual(Integer($0000FF), LParagraph.Runs[1].Format.Color);
+    Assert.IsFalse(LParagraph.Runs[2].Format.HasColor, '\cf0 is the automatic color');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_WPToolsShadedCell_SetsBackgroundAndTextColor;
+var
+  LDocument: TWARichDocument;
+  LRow: TWATableRow;
+begin
+  // The AIH form's black title bars: WPTools' color table has no empty
+  // first entry (index 0 is black, \cf0 still means "normal text"), the
+  // cell is \clcfpatK\clcbpatK\clshdng10000 (repeated in the paragraph)
+  // and the text is \cf of the white entry.
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0{\colortbl\red0\green0\blue0;\red255\green255\blue255;\red0\green0\blue0;}' +
+    '{\trowd\trleft-30\clcfpat2\clcbpat2\clshdng10000\cellx3000\cellx6000' +
+    '\pard\intbl\qc\clcfpat2\clcbpat2\clshdng10000\plain\cf1\b TITULO\cell' +
+    '\pard\intbl\plain\cf0 x\cell\row}}');
+  try
+    LRow := TWATableBlock(LDocument.Blocks[0]).Rows[0];
+    Assert.IsTrue(LRow.Cells[0].HasBackgroundColor);
+    Assert.AreEqual(Integer($000000), LRow.Cells[0].BackgroundColor);
+    Assert.IsTrue(LRow.Cells[0].Runs[0].Format.HasColor);
+    Assert.AreEqual(Integer($FFFFFF), LRow.Cells[0].Runs[0].Format.Color);
+    Assert.IsFalse(LRow.Cells[1].HasBackgroundColor, 'the shading must not leak into the next cell');
+    Assert.IsFalse(LRow.Cells[1].Runs[0].Format.HasColor);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentParserTests.Parse_CellShadingWithoutPatternColor_BlendsOverWhite;
+var
+  LDocument: TWARichDocument;
+  LRow: TWATableRow;
+begin
+  // \clshdng alone is a percentage of black over white; \clcbpat alone is
+  // a plain background color.
+  LDocument := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0{\colortbl;\red255\green255\blue0;}' +
+    '{\trowd\clshdng2500\cellx3000\clcbpat1\cellx6000\cellx9000' +
+    '\pard\intbl a\cell\pard\intbl b\cell\pard\intbl c\cell\row}}');
+  try
+    LRow := TWATableBlock(LDocument.Blocks[0]).Rows[0];
+    Assert.AreEqual(Integer($BFBFBF), LRow.Cells[0].BackgroundColor);
+    Assert.AreEqual(Integer($FFFF00), LRow.Cells[1].BackgroundColor);
+    Assert.IsFalse(LRow.Cells[2].HasBackgroundColor);
   finally
     LDocument.Free;
   end;

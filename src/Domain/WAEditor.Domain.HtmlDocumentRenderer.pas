@@ -59,6 +59,12 @@ begin
   end;
 end;
 
+/// $RRGGBB -> CSS "#rrggbb".
+function CssColor(AColor: Integer): string;
+begin
+  Result := '#' + LowerCase(IntToHex(AColor and $FFFFFF, 6));
+end;
+
 function RenderRun(ARun: TWARun): string;
 var
   LStyle: string;
@@ -121,6 +127,8 @@ begin
     LStyle := LStyle + Format('font-family:''%s'';', [EscapeHtml(ARun.Format.FontName)]);
   if ARun.Format.FontSizeInPoints > 0 then
     LStyle := LStyle + Format('font-size:%dpt;', [ARun.Format.FontSizeInPoints]);
+  if ARun.Format.HasColor then
+    LStyle := LStyle + Format('color:%s;', [CssColor(ARun.Format.Color)]);
   if LStyle <> '' then
     Result := Format('<span style="%s">%s</span>', [LStyle, Result]);
 end;
@@ -206,6 +214,7 @@ var
   LGridIndex, LSpanIndex: Integer;
   LColWidthList: string;
   LTableStyle: string;
+  LCellStyle: string;
   LTableWidthPx: Integer;
 begin
   LColumnWidthsPx := ColumnWidthsInPx(ATable);
@@ -272,9 +281,15 @@ begin
         if LColWidthList <> '' then
           LBuilder.AppendFormat(' colwidth="%s"', [LColWidthList]);
         Inc(LGridIndex, LCell.ColSpan);
+        LCellStyle := '';
         if LCell.Alignment <> taLeftAlign then
-          LBuilder.AppendFormat(' style="text-align: %s;"',
+          LCellStyle := Format('text-align: %s;',
             [TWAAlignmentMapper.ToHtmlAttribute(LCell.Alignment)]);
+        if LCell.HasBackgroundColor then
+          LCellStyle := Trim(LCellStyle + Format(' background-color: %s;',
+            [CssColor(LCell.BackgroundColor)]));
+        if LCellStyle <> '' then
+          LBuilder.AppendFormat(' style="%s"', [LCellStyle]);
         LBuilder.Append('>');
         for LRun in LCell.Runs do
           LBuilder.Append(RenderRun(LRun));

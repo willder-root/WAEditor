@@ -424,11 +424,144 @@ begin
   end;
 end;
 
+function TryParseCssColor(const AValue: string; out AColor: Integer): Boolean;
+// A CSS color as $RRGGBB: #rgb, #rrggbb, rgb()/rgba() with 0-255 or
+// percent components, or one of the basic named colors. "transparent", a
+// fully transparent rgba(), inherit/currentColor and anything else not
+// understood return False (no color).
+const
+  WA_COLOR_NAMES: array[0..19] of string = (
+    'black', 'white', 'red', 'lime', 'green', 'blue', 'yellow', 'cyan',
+    'aqua', 'magenta', 'fuchsia', 'silver', 'gray', 'grey', 'maroon',
+    'olive', 'purple', 'teal', 'navy', 'orange');
+  WA_COLOR_VALUES: array[0..19] of Integer = (
+    $000000, $FFFFFF, $FF0000, $00FF00, $008000, $0000FF, $FFFF00, $00FFFF,
+    $00FFFF, $FF00FF, $FF00FF, $C0C0C0, $808080, $808080, $800000,
+    $808000, $800080, $008080, $000080, $FFA500);
+var
+  LValue, LHex, LInner: string;
+  LParts: TArray<string>;
+  LComponents: array[0..2] of Integer;
+  LNumber, LAlpha: Double;
+  I: Integer;
+begin
+  Result := False;
+  AColor := 0;
+  LValue := LowerCase(Trim(AValue));
+  I := Pos('!', LValue);
+  if I > 0 then
+    LValue := Trim(Copy(LValue, 1, I - 1));
+  if LValue = '' then
+    Exit;
+  if LValue[1] = '#' then
+  begin
+    LHex := Copy(LValue, 2, MaxInt);
+    if Length(LHex) in [3, 4] then
+      LHex := LHex[1] + LHex[1] + LHex[2] + LHex[2] + LHex[3] + LHex[3]
+    else if Length(LHex) in [6, 8] then
+      LHex := Copy(LHex, 1, 6)
+    else
+      Exit;
+    Result := TryStrToInt('$' + LHex, AColor);
+    Exit;
+  end;
+  if LValue.StartsWith('rgb') then
+  begin
+    I := Pos('(', LValue);
+    if (I = 0) or (LValue[Length(LValue)] <> ')') then
+      Exit;
+    LInner := Copy(LValue, I + 1, Length(LValue) - I - 1);
+    LInner := StringReplace(LInner, '/', ',', [rfReplaceAll]);
+    if Pos(',', LInner) > 0 then
+      LParts := LInner.Split([','])
+    else
+      LParts := LInner.Split([' '], TStringSplitOptions.ExcludeEmpty);
+    if Length(LParts) < 3 then
+      Exit;
+    for I := 0 to 2 do
+    begin
+      LInner := Trim(LParts[I]);
+      if LInner.EndsWith('%') then
+      begin
+        if not TryStrToFloat(Copy(LInner, 1, Length(LInner) - 1), LNumber, DotDecimalFormatSettings) then
+          Exit;
+        LNumber := LNumber * 255 / 100;
+      end
+      else if not TryStrToFloat(LInner, LNumber, DotDecimalFormatSettings) then
+        Exit;
+      if LNumber < 0 then
+        LNumber := 0
+      else if LNumber > 255 then
+        LNumber := 255;
+      LComponents[I] := Round(LNumber);
+    end;
+    if Length(LParts) >= 4 then
+    begin
+      LInner := Trim(LParts[3]);
+      if LInner.EndsWith('%') then
+      begin
+        if TryStrToFloat(Copy(LInner, 1, Length(LInner) - 1), LAlpha, DotDecimalFormatSettings) and
+           (LAlpha <= 0) then
+          Exit;
+      end
+      else if TryStrToFloat(LInner, LAlpha, DotDecimalFormatSettings) and (LAlpha <= 0) then
+        Exit;
+    end;
+    AColor := (LComponents[0] shl 16) or (LComponents[1] shl 8) or LComponents[2];
+    Exit(True);
+  end;
+  for I := Low(WA_COLOR_NAMES) to High(WA_COLOR_NAMES) do
+    if WA_COLOR_NAMES[I] = LValue then
+    begin
+      AColor := WA_COLOR_VALUES[I];
+      Exit(True);
+    end;
+end;
+
+function TryParseCellBackground(const AAttributes: string; out AColor: Integer): Boolean;
+// A cell's background: background-color (or a color inside the
+// background shorthand) in its style, else the legacy bgcolor attribute.
+var
+  LDeclaration, LName, LValue, LToken: string;
+  LColonPos, LParenPos: Integer;
+begin
+  Result := False;
+  AColor := 0;
+  for LDeclaration in DecodeHtmlEntities(ExtractAttribute(AAttributes, 'style')).Split([';']) do
+  begin
+    LColonPos := Pos(':', LDeclaration);
+    if LColonPos = 0 then
+      Continue;
+    LName := LowerCase(Trim(Copy(LDeclaration, 1, LColonPos - 1)));
+    LValue := Trim(Copy(LDeclaration, LColonPos + 1, MaxInt));
+    if LName = 'background-color' then
+      Result := TryParseCssColor(LValue, AColor)
+    else if LName = 'background' then
+    begin
+      // The shorthand mixes the color with images, positions and so on;
+      // an rgb()/rgba() color is taken whole, otherwise each word is tried.
+      LParenPos := Pos('rgb', LowerCase(LValue));
+      if LParenPos > 0 then
+        Result := TryParseCssColor(Copy(LValue, LParenPos,
+          PosEx(')', LValue, LParenPos) - LParenPos + 1), AColor)
+      else
+      begin
+        Result := False;
+        for LToken in LValue.Split([' '], TStringSplitOptions.ExcludeEmpty) do
+          if TryParseCssColor(LToken, AColor) then
+            Exit(True);
+      end;
+    end;
+  end;
+  if (not Result) and (Pos('background', LowerCase(ExtractAttribute(AAttributes, 'style'))) = 0) then
+    Result := TryParseCssColor(ExtractAttribute(AAttributes, 'bgcolor'), AColor);
+end;
+
 function ParseStyleFormat(const AStyle: string; ABase: TWARunFormat): TWARunFormat;
 var
   LParts: TArray<string>;
   LPart, LProp, LValue: string;
-  LColonPos, LSizeInPoints: Integer;
+  LColonPos, LSizeInPoints, LColor: Integer;
 begin
   Result := ABase;
   // Decode entities before splitting on ';': an HTML entity like &quot;
@@ -470,7 +603,14 @@ begin
     else if (LProp = 'font-style') and (LowerCase(LValue) = 'italic') then
       Result.Italic := True
     else if (LProp = 'text-decoration') and (Pos('underline', LowerCase(LValue)) > 0) then
-      Result.Underline := True;
+      Result.Underline := True
+    else if (LProp = 'color') and TryParseCssColor(LValue, LColor) then
+    begin
+      // A value not understood (inherit, currentColor, ...) keeps the
+      // inherited color.
+      Result.HasColor := True;
+      Result.Color := LColor;
+    end;
   end;
 end;
 
@@ -979,6 +1119,7 @@ var
   LImageFormat: string;
   LImageWidthPx, LImageHeightPx: Integer;
   LNativeWidthPx, LNativeHeightPx: Integer;
+  LColor: Integer;
 begin
   // This model has one border setting per table, so a "no border" on any
   // of its structural tags (<thead>, <tbody>, <tfoot>, <tr>, <td>, <th>;
@@ -1028,6 +1169,13 @@ begin
       LFormat.FontName := LFace;
     if TryStrToInt(ExtractAttribute(AAttributes, 'size'), LSize) then
       LFormat.FontSizeInPoints := TWAFontSizeScale.FromHtmlLegacySize(LSize);
+    if TryParseCssColor(ExtractAttribute(AAttributes, 'color'), LColor) then
+    begin
+      LFormat.HasColor := True;
+      LFormat.Color := LColor;
+    end;
+    // <font style="..."> as well, which some editors write.
+    LFormat := ParseStyleFormat(ExtractAttribute(AAttributes, 'style'), LFormat);
     FFormatStack.Push(LFormat);
   end
   else if ATagName = 'span' then
@@ -1168,6 +1316,9 @@ begin
       FCurrentCell := FCurrentRow.AddCell;
       FCurrentCell.ColSpan := LColSpan;
       FCurrentCell.Alignment := ParseAlignmentAttribute(AAttributes, taLeftAlign);
+      FCurrentCell.HasBackgroundColor := TryParseCellBackground(AAttributes, LColor);
+      if FCurrentCell.HasBackgroundColor then
+        FCurrentCell.BackgroundColor := LColor;
     end;
   end
   else if (ATagName = 'ul') or (ATagName = 'ol') then

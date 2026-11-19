@@ -182,6 +182,9 @@ type
 
     [Test]
     procedure Parse_DoubleEncodedEntity_IsDecodedOnlyOnce;
+
+    [Test]
+    procedure Parse_CssColorsOnRunsAndCells_SetTextAndBackgroundColor;
   end;
 
 implementation
@@ -986,6 +989,40 @@ begin
   LDocument := TWAHtmlDocumentParser.Parse('<p>&amp;lt; &#38;lt;</p>');
   try
     Assert.AreEqual('&lt; &lt;', TWAParagraphBlock(LDocument.Blocks[0]).Runs[0].Text);
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentParserTests.Parse_CssColorsOnRunsAndCells_SetTextAndBackgroundColor;
+var
+  LDocument: TWARichDocument;
+  LRow: TWATableRow;
+  LParagraph: TWAParagraphBlock;
+begin
+  // The forms Jodit and older editors write: rgb() with spaces, #rgb,
+  // bgcolor, the background shorthand, <font color> and named colors.
+  LDocument := TWAHtmlDocumentParser.Parse(
+    '<table><tr>' +
+    '<td style="background-color: rgb(0, 0, 0); text-align: center;"><span style="color: rgb(255, 255, 255);">T</span></td>' +
+    '<td bgcolor="#ff0">y</td>' +
+    '<td style="background: #c0c0c0 none">z</td>' +
+    '<td style="background-color: transparent">w</td>' +
+    '</tr></table>' +
+    '<p><font color="red">r</font><span style="color:#0000FF">b</span><span style="color: inherit">i</span></p>');
+  try
+    LRow := TWATableBlock(LDocument.Blocks[0]).Rows[0];
+    Assert.IsTrue(LRow.Cells[0].HasBackgroundColor);
+    Assert.AreEqual(Integer($000000), LRow.Cells[0].BackgroundColor);
+    Assert.AreEqual(Integer($FFFFFF), LRow.Cells[0].Runs[0].Format.Color);
+    Assert.AreEqual(Integer($FFFF00), LRow.Cells[1].BackgroundColor);
+    Assert.AreEqual(Integer($C0C0C0), LRow.Cells[2].BackgroundColor);
+    Assert.IsFalse(LRow.Cells[3].HasBackgroundColor);
+
+    LParagraph := TWAParagraphBlock(LDocument.Blocks[1]);
+    Assert.AreEqual(Integer($FF0000), LParagraph.Runs[0].Format.Color);
+    Assert.AreEqual(Integer($0000FF), LParagraph.Runs[1].Format.Color);
+    Assert.IsFalse(LParagraph.Runs[2].Format.HasColor);
   finally
     LDocument.Free;
   end;

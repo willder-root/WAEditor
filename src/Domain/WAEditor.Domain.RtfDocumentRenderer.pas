@@ -44,7 +44,90 @@ type
     property Names: TList<string> read FNames;
   end;
 
+  /// The colors the document uses, written as {\colortbl;...}. Entry 0 is
+  /// Word's empty "auto" color, so a color's \cfN/\clcbpatN index is its
+  /// position in Colors plus one.
+  TWAColorTable = class
+  private
+    FColors: TList<Integer>;
+  public
+    constructor Create;
+    destructor Destroy; override;
+    function IndexOf(AColor: Integer): Integer;
+    procedure CollectFrom(ADocument: TWARichDocument);
+    function RenderTableGroup: string;
+  end;
+
 function EscapeRtf(const AText: string): string; forward;
+
+constructor TWAColorTable.Create;
+begin
+  inherited Create;
+  FColors := TList<Integer>.Create;
+end;
+
+destructor TWAColorTable.Destroy;
+begin
+  FColors.Free;
+  inherited Destroy;
+end;
+
+function TWAColorTable.IndexOf(AColor: Integer): Integer;
+begin
+  Result := FColors.IndexOf(AColor);
+  if Result < 0 then
+    Result := FColors.Add(AColor);
+  Inc(Result);
+end;
+
+procedure TWAColorTable.CollectFrom(ADocument: TWARichDocument);
+
+  procedure CollectRuns(ARuns: TObjectList<TWARun>);
+  var
+    LRun: TWARun;
+  begin
+    for LRun in ARuns do
+      if LRun.Format.HasColor then
+        IndexOf(LRun.Format.Color);
+  end;
+
+var
+  LBlock: TWABlock;
+  LRow: TWATableRow;
+  LCell: TWATableCell;
+  LItem: TWAListItem;
+begin
+  for LBlock in ADocument.Blocks do
+  begin
+    if LBlock is TWAParagraphBlock then
+      CollectRuns(TWAParagraphBlock(LBlock).Runs)
+    else if LBlock is TWATableBlock then
+      for LRow in TWATableBlock(LBlock).Rows do
+        for LCell in LRow.Cells do
+        begin
+          if LCell.HasBackgroundColor then
+            IndexOf(LCell.BackgroundColor);
+          CollectRuns(LCell.Runs);
+        end
+    else if LBlock is TWAListBlock then
+      for LItem in TWAListBlock(LBlock).Items do
+        CollectRuns(LItem.Runs);
+  end;
+end;
+
+function TWAColorTable.RenderTableGroup: string;
+var
+  LColor: Integer;
+begin
+  Result := '';
+  if FColors.Count = 0 then
+    Exit;
+  Result := '{\colortbl;';
+  for LColor in FColors do
+    Result := Result + Format('\red%d\green%d\blue%d;',
+      [(LColor shr 16) and $FF, (LColor shr 8) and $FF, LColor and $FF]);
+  Result := Result + '}';
+end;
 
 constructor TWAFontTable.Create;
 begin
@@ -182,7 +265,8 @@ begin
   end;
 end;
 
-function RenderRunGroup(ARun: TWARun; AFontTable: TWAFontTable): string;
+function RenderRunGroup(ARun: TWARun; AFontTable: TWAFontTable;
+  AColorTable: TWAColorTable): string;
 var
   LControlWords: string;
   LNativeWidthPx, LNativeHeightPx: Integer;
@@ -260,6 +344,8 @@ begin
     LControlWords := LControlWords + Format('\f%d', [AFontTable.IndexOf(ARun.Format.FontName)]);
   if ARun.Format.FontSizeInPoints > 0 then
     LControlWords := LControlWords + Format('\fs%d', [ARun.Format.FontSizeInPoints * 2]);
+  if ARun.Format.HasColor then
+    LControlWords := LControlWords + Format('\cf%d', [AColorTable.IndexOf(ARun.Format.Color)]);
   if ARun.Format.Bold then
     LControlWords := LControlWords + '\b';
   if ARun.Format.Italic then
@@ -288,7 +374,8 @@ begin
   end;
 end;
 
-function RenderParagraph(AParagraph: TWAParagraphBlock; AFontTable: TWAFontTable): string;
+function RenderParagraph(AParagraph: TWAParagraphBlock; AFontTable: TWAFontTable;
+  AColorTable: TWAColorTable): string;
 var
   LBuilder: TStringBuilder;
   LRun: TWARun;
@@ -310,7 +397,7 @@ begin
       LBuilder.Append('\brdrl\brdrs\brdrr\brdrs\brdrt\brdrs\brdrb\brdrs');
     LBuilder.Append(' ');
     for LRun in AParagraph.Runs do
-      LBuilder.Append(RenderRunGroup(LRun, AFontTable));
+      LBuilder.Append(RenderRunGroup(LRun, AFontTable, AColorTable));
     LBuilder.Append('\par').Append(sLineBreak);
     Result := LBuilder.ToString;
   finally
@@ -318,7 +405,23 @@ begin
   end;
 end;
 
-function RenderTable(ATable: TWATableBlock; AFontTable: TWAFontTable): string;
+/// A filled cell written the way WPTools writes it, \clcfpatN\clcbpatN
+/// \clshdng10000 (pattern color N over background N at 100%), which every
+/// reading of the shading words resolves to N. Repeated after the cell's
+/// \pard\intbl, as WPTools does too.
+function CellShading(ACell: TWATableCell; AColorTable: TWAColorTable): string;
+var
+  LIndex: Integer;
+begin
+  Result := '';
+  if not ACell.HasBackgroundColor then
+    Exit;
+  LIndex := AColorTable.IndexOf(ACell.BackgroundColor);
+  Result := Format('\clcfpat%0:d\clcbpat%0:d\clshdng10000', [LIndex]);
+end;
+
+function RenderTable(ATable: TWATableBlock; AFontTable: TWAFontTable;
+  AColorTable: TWAColorTable): string;
 var
   LBuilder: TStringBuilder;
   LRow: TWATableRow;
@@ -380,6 +483,7 @@ begin
           Inc(I);
         end;
         LBuilder.Append(LCellBorders);
+        LBuilder.Append(CellShading(LCell, AColorTable));
         LBuilder.AppendFormat('\cellx%d', [LCumulativeWidth]);
       end;
       LBuilder.Append(sLineBreak);
@@ -390,9 +494,10 @@ begin
         LBuilder.Append('\pard\intbl');
         if LCell.Alignment <> taLeftAlign then
           LBuilder.Append(AlignmentControlWord(LCell.Alignment));
+        LBuilder.Append(CellShading(LCell, AColorTable));
         LBuilder.Append(' ');
         for LRun in LCell.Runs do
-          LBuilder.Append(RenderRunGroup(LRun, AFontTable));
+          LBuilder.Append(RenderRunGroup(LRun, AFontTable, AColorTable));
         LBuilder.Append('\cell').Append(sLineBreak);
       end;
       LBuilder.Append('\row').Append(sLineBreak);
@@ -404,7 +509,8 @@ begin
   end;
 end;
 
-function RenderList(AList: TWAListBlock; AFontTable: TWAFontTable): string;
+function RenderList(AList: TWAListBlock; AFontTable: TWAFontTable;
+  AColorTable: TWAColorTable): string;
 var
   LBuilder: TStringBuilder;
   LRun: TWARun;
@@ -425,7 +531,7 @@ begin
       else
         LBuilder.Append('\bullet\tab ');
       for LRun in AList.Items[I].Runs do
-        LBuilder.Append(RenderRunGroup(LRun, AFontTable));
+        LBuilder.Append(RenderRunGroup(LRun, AFontTable, AColorTable));
       LBuilder.Append('\par').Append(sLineBreak);
     end;
     Result := LBuilder.ToString;
@@ -437,32 +543,38 @@ end;
 class function TWARtfDocumentRenderer.Render(ADocument: TWARichDocument): string;
 var
   LFontTable: TWAFontTable;
+  LColorTable: TWAColorTable;
   LBuilder: TStringBuilder;
   LBlock: TWABlock;
 begin
   LFontTable := TWAFontTable.Create;
+  LColorTable := TWAColorTable.Create;
   LBuilder := TStringBuilder.Create;
   try
     LFontTable.CollectFrom(ADocument);
+    LColorTable.CollectFrom(ADocument);
 
     LBuilder.Append('{\rtf1\ansi\ansicpg1252\deff0\uc1').Append(sLineBreak);
     LBuilder.Append(LFontTable.RenderTableGroup).Append(sLineBreak);
+    if LColorTable.RenderTableGroup <> '' then
+      LBuilder.Append(LColorTable.RenderTableGroup).Append(sLineBreak);
     LBuilder.Append('\viewkind4').Append(sLineBreak);
 
     for LBlock in ADocument.Blocks do
     begin
       if LBlock is TWAParagraphBlock then
-        LBuilder.Append(RenderParagraph(TWAParagraphBlock(LBlock), LFontTable))
+        LBuilder.Append(RenderParagraph(TWAParagraphBlock(LBlock), LFontTable, LColorTable))
       else if LBlock is TWATableBlock then
-        LBuilder.Append(RenderTable(TWATableBlock(LBlock), LFontTable))
+        LBuilder.Append(RenderTable(TWATableBlock(LBlock), LFontTable, LColorTable))
       else if LBlock is TWAListBlock then
-        LBuilder.Append(RenderList(TWAListBlock(LBlock), LFontTable));
+        LBuilder.Append(RenderList(TWAListBlock(LBlock), LFontTable, LColorTable));
     end;
 
     LBuilder.Append('}');
     Result := LBuilder.ToString;
   finally
     LBuilder.Free;
+    LColorTable.Free;
     LFontTable.Free;
   end;
 end;

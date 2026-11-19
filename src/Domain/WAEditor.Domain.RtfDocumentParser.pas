@@ -39,6 +39,16 @@ type
     FLength: Integer;
     FDocument: TWARichDocument;
     FFontTable: TDictionary<Integer, string>;
+    // {\colortbl} entries in order, as $RRGGBB; -1 for an entry with no
+    // \red/\green/\blue (the "auto" color Word writes first).
+    FColorTable: TList<Integer>;
+    // Cell shading words read since the last \cellx (color table indexes,
+    // -1 = not given; \clshdng in hundredths of a percent) and the
+    // resolved background of each \cellx of the row (-1 = none).
+    FPendingCellBackIndex: Integer;
+    FPendingCellForeIndex: Integer;
+    FPendingCellShading: Integer;
+    FPendingCellBackgrounds: TList<Integer>;
     FGroupStack: TStack<TWARtfGroupSnapshot>;
     FCurrentFormat: TWARunFormat;
     FCurrentAlignment: TWATextAlignment;
@@ -112,6 +122,10 @@ type
     procedure ParseGroup;
     procedure ParseFontTableGroup;
     procedure ParseFontEntry;
+    procedure ParseColorTableGroup;
+    function TryGetTableColor(AIndex: Integer; out AColor: Integer): Boolean;
+    function ResolvePendingCellBackground: Integer;
+    procedure ResetPendingCellShading;
     procedure ParseTableGroup;
     procedure RecordRowCellEdges;
     procedure RebuildTableGrid(ATable: TWATableBlock);
@@ -150,6 +164,9 @@ begin
   FLength := Length(ARtf);
   FDocument := TWARichDocument.Create;
   FFontTable := TDictionary<Integer, string>.Create;
+  FColorTable := TList<Integer>.Create;
+  FPendingCellBackgrounds := TList<Integer>.Create;
+  ResetPendingCellShading;
   FGroupStack := TStack<TWARtfGroupSnapshot>.Create;
   FPendingCellxValues := TList<Integer>.Create;
   FPendingCellMerges := TList<Integer>.Create;
@@ -166,6 +183,8 @@ begin
   FRowGridEdges.Free;
   FPendingCellxValues.Free;
   FGroupStack.Free;
+  FPendingCellBackgrounds.Free;
+  FColorTable.Free;
   FFontTable.Free;
   inherited Destroy;
 end;
@@ -196,8 +215,8 @@ const
   // marked with the generic \* "ignorable if unrecognized" prefix (many
   // real-world writers omit \* on these even though the RTF spec treats
   // them the same way \fonttbl is treated: known, but not body content).
-  WA_SKIPPABLE_DESTINATIONS: array[0..6] of string = (
-    'colortbl', 'stylesheet', 'info', 'rsidtbl', 'listtable',
+  WA_SKIPPABLE_DESTINATIONS: array[0..5] of string = (
+    'stylesheet', 'info', 'rsidtbl', 'listtable',
     'listoverridetable', 'generator');
 var
   LSavedPos: Integer;
@@ -216,6 +235,8 @@ begin
       Result := 'skip' // \* marks an ignorable destination: always safe to skip whole
     else if MatchesControlWordAt(FPos, 'fonttbl') then
       Result := 'fonttbl'
+    else if MatchesControlWordAt(FPos, 'colortbl') then
+      Result := 'colortbl'
     else if MatchesControlWordAt(FPos, 'trowd') then
       Result := 'trowd'
     else if MatchesControlWordAt(FPos, 'listtext') then
@@ -354,6 +375,7 @@ procedure TWARtfParserState.HandleControlWord(const AName: string; AHasParam: Bo
   AParam: Integer);
 var
   LFontName: string;
+  LColor: Integer;
 begin
   if AName = 'par' then
   begin
@@ -486,6 +508,32 @@ begin
     if AHasParam and FFontTable.TryGetValue(AParam, LFontName) then
       FCurrentFormat.FontName := LFontName;
   end
+  else if AName = 'cf' then
+  begin
+    // \cf0 is the default color: Word's first entry is the empty "auto"
+    // one, and WPTools (whose table starts with black) writes \cf0 on
+    // every run of normal text.
+    FCurrentFormat.HasColor := AHasParam and (AParam > 0) and TryGetTableColor(AParam, LColor);
+    if FCurrentFormat.HasColor then
+      FCurrentFormat.Color := LColor
+    else
+      FCurrentFormat.Color := 0;
+  end
+  else if AName = 'clcbpat' then
+  begin
+    if AHasParam then
+      FPendingCellBackIndex := AParam;
+  end
+  else if AName = 'clcfpat' then
+  begin
+    if AHasParam then
+      FPendingCellForeIndex := AParam;
+  end
+  else if AName = 'clshdng' then
+  begin
+    if AHasParam then
+      FPendingCellShading := AParam;
+  end
   else if AName = 'trowd' then
   begin
     if FCurrentTable <> nil then
@@ -493,6 +541,8 @@ begin
       FCurrentRow := FCurrentTable.AddRow;
       FPendingCellxValues.Clear;
       FPendingCellMerges.Clear;
+      FPendingCellBackgrounds.Clear;
+      ResetPendingCellShading;
       FPendingMerge := 0;
       FCurrentGridIndex := 0;
       FPendingTableLeft := 0;
@@ -528,8 +578,10 @@ begin
     begin
       FPendingCellxValues.Add(AParam);
       FPendingCellMerges.Add(FPendingMerge);
+      FPendingCellBackgrounds.Add(ResolvePendingCellBackground);
     end;
     FPendingMerge := 0;
+    ResetPendingCellShading;
   end
   else if AName = 'clmgf' then
     FPendingMerge := 1
@@ -569,7 +621,15 @@ begin
   else if AName = 'cell' then
   begin
     if FCurrentCell <> nil then
+    begin
       FCurrentCell.Alignment := FCurrentAlignment;
+      if (FCurrentGridIndex < FPendingCellBackgrounds.Count) and
+         (FPendingCellBackgrounds[FCurrentGridIndex] >= 0) then
+      begin
+        FCurrentCell.HasBackgroundColor := True;
+        FCurrentCell.BackgroundColor := FPendingCellBackgrounds[FCurrentGridIndex];
+      end;
+    end;
     // A \clmrg grid cell is the continuation of the merge started by the
     // cell before it: its (normally empty) content is dropped and the
     // previous cell spans one more column (HTML colspan).
@@ -757,6 +817,127 @@ begin
       Inc(FPos);
     end;
   end;
+end;
+
+procedure TWARtfParserState.ParseColorTableGroup;
+// {\colortbl;\red255\green0\blue0;...}: one entry per ';', each made of
+// \red/\green/\blue. An entry with none of them (Word's leading empty one)
+// is the automatic color.
+var
+  LNameStart, LDigitsStart, LParam: Integer;
+  LName: string;
+  LRed, LGreen, LBlue: Integer;
+  LHasComponent: Boolean;
+begin
+  Inc(FPos, 9); // consume '\colortbl'
+  LRed := 0;
+  LGreen := 0;
+  LBlue := 0;
+  LHasComponent := False;
+  while not AtEnd do
+  begin
+    case FRtf[FPos] of
+      '\':
+        begin
+          Inc(FPos);
+          LNameStart := FPos;
+          while (not AtEnd) and IsAsciiLetter(FRtf[FPos]) do
+            Inc(FPos);
+          LName := Copy(FRtf, LNameStart, FPos - LNameStart);
+          LDigitsStart := FPos;
+          while (not AtEnd) and IsAsciiDigit(FRtf[FPos]) do
+            Inc(FPos);
+          LParam := StrToIntDef(Copy(FRtf, LDigitsStart, FPos - LDigitsStart), 0) and $FF;
+          if (not AtEnd) and (FRtf[FPos] = ' ') then
+            Inc(FPos);
+          if LName = 'red' then
+            LRed := LParam
+          else if LName = 'green' then
+            LGreen := LParam
+          else if LName = 'blue' then
+            LBlue := LParam
+          else
+            Continue;
+          LHasComponent := True;
+        end;
+      ';':
+        begin
+          if LHasComponent then
+            FColorTable.Add((LRed shl 16) or (LGreen shl 8) or LBlue)
+          else
+            FColorTable.Add(-1);
+          LRed := 0;
+          LGreen := 0;
+          LBlue := 0;
+          LHasComponent := False;
+          Inc(FPos);
+        end;
+      '{':
+        begin
+          Inc(FPos);
+          SkipGroup;
+        end;
+      '}':
+        begin
+          Inc(FPos);
+          Exit;
+        end;
+    else
+      Inc(FPos);
+    end;
+  end;
+end;
+
+function TWARtfParserState.TryGetTableColor(AIndex: Integer; out AColor: Integer): Boolean;
+begin
+  Result := (AIndex >= 0) and (AIndex < FColorTable.Count) and (FColorTable[AIndex] >= 0);
+  if Result then
+    AColor := FColorTable[AIndex]
+  else
+    AColor := 0;
+end;
+
+procedure TWARtfParserState.ResetPendingCellShading;
+begin
+  FPendingCellBackIndex := -1;
+  FPendingCellForeIndex := -1;
+  FPendingCellShading := 0;
+end;
+
+function TWARtfParserState.ResolvePendingCellBackground: Integer;
+// The cell's background as $RRGGBB, or -1 for none. \clcbpat is the
+// background color; \clshdng N (hundredths of a percent) lays the
+// \clcfpat color over it at N% (auto foreground = black, auto background
+// = white). WPTools writes a filled cell as \clcfpatK\clcbpatK\clshdng10000,
+// which is K under either reading. Index 0 is the automatic color, as for
+// \cf.
+var
+  LBack, LFore, LShading: Integer;
+  LHasBack, LHasFore: Boolean;
+
+  function Blend(AShift: Integer): Integer;
+  begin
+    Result := (((LFore shr AShift) and $FF) * LShading +
+      ((LBack shr AShift) and $FF) * (10000 - LShading) + 5000) div 10000;
+  end;
+
+begin
+  LHasBack := (FPendingCellBackIndex > 0) and TryGetTableColor(FPendingCellBackIndex, LBack);
+  LHasFore := (FPendingCellForeIndex > 0) and TryGetTableColor(FPendingCellForeIndex, LFore);
+  LShading := FPendingCellShading;
+  if LShading > 10000 then
+    LShading := 10000;
+  if LShading <= 0 then
+  begin
+    if LHasBack then
+      Exit(LBack);
+    Exit(-1);
+  end;
+  if not LHasFore then
+    LFore := $000000;
+  if not LHasBack then
+    LBack := $FFFFFF;
+  Result := (Blend(16) shl 16) or (Blend(8) shl 8) or Blend(0);
 end;
 
 procedure TWARtfParserState.RecordRowCellEdges;
@@ -1224,6 +1405,8 @@ begin
     SkipWhitespace;
   if LKeyword = 'fonttbl' then
     ParseFontTableGroup
+  else if LKeyword = 'colortbl' then
+    ParseColorTableGroup
   else if LKeyword = 'trowd' then
     ParseTableGroup
   else if LKeyword = 'listtext' then

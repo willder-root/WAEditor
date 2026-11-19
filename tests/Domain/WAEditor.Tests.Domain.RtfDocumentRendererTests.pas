@@ -77,6 +77,12 @@ type
 
     [Test]
     procedure Render_AngleBracketsInText_AreKeptLiterally;
+
+    [Test]
+    procedure Render_ColoredRunAndShadedCell_EmitColorTableAndShadingWords;
+
+    [Test]
+    procedure Render_DocumentWithoutColors_EmitsNoColorTable;
   end;
 
 implementation
@@ -530,6 +536,51 @@ begin
     LDocument.AddParagraph.AddRun('<<PACIENTE>>', TWARunFormat.Plain);
     LRtf := TWARtfDocumentRenderer.Render(LDocument);
     Assert.Contains(LRtf, '{<<PACIENTE>>}');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentRendererTests.Render_ColoredRunAndShadedCell_EmitColorTableAndShadingWords;
+var
+  LDocument: TWARichDocument;
+  LFormat: TWARunFormat;
+  LTable: TWATableBlock;
+  LRtf: string;
+begin
+  LDocument := TWARichDocument.Create;
+  try
+    LFormat := TWARunFormat.Plain;
+    LFormat.HasColor := True;
+    LFormat.Color := $FF0000;
+    LDocument.AddParagraph.AddRun('Red', LFormat);
+    LTable := LDocument.AddTable(1, 1);
+    LTable.Rows[0].Cells[0].HasBackgroundColor := True;
+    LTable.Rows[0].Cells[0].BackgroundColor := $000000;
+    LFormat.Color := $FFFFFF;
+    LTable.Rows[0].Cells[0].AddRun('Title', LFormat);
+    LRtf := TWARtfDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LRtf, '{\colortbl;\red255\green0\blue0;\red0\green0\blue0;\red255\green255\blue255;}');
+    Assert.Contains(LRtf, '{\cf1 Red}');
+    Assert.Contains(LRtf, '\clcfpat2\clcbpat2\clshdng10000\cellx');
+    Assert.Contains(LRtf, '{\cf3 Title}');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWARtfDocumentRendererTests.Render_DocumentWithoutColors_EmitsNoColorTable;
+var
+  LDocument: TWARichDocument;
+  LRtf: string;
+begin
+  LDocument := TWARichDocument.Create;
+  try
+    LDocument.AddParagraph.AddRun('Plain', TWARunFormat.Plain);
+    LRtf := TWARtfDocumentRenderer.Render(LDocument);
+    Assert.DoesNotContain(LRtf, 'colortbl');
+    Assert.DoesNotContain(LRtf, '\cf');
   finally
     LDocument.Free;
   end;

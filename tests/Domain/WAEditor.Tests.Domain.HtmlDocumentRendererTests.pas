@@ -64,6 +64,9 @@ type
 
     [Test]
     procedure Render_ImageRun_EmitsImgWithDataUriAndDimensions;
+
+    [Test]
+    procedure Render_ColoredRunAndCellBackground_EmitCssColors;
   end;
 
 implementation
@@ -425,6 +428,32 @@ begin
       [TNetEncoding.Base64.EncodeBytesToString(LBytes)]));
     Assert.Contains(LHtml, 'width="40"');
     Assert.Contains(LHtml, 'height="20"');
+  finally
+    LDocument.Free;
+  end;
+end;
+
+procedure TWAHtmlDocumentRendererTests.Render_ColoredRunAndCellBackground_EmitCssColors;
+var
+  LDocument: TWARichDocument;
+  LFormat: TWARunFormat;
+  LTable: TWATableBlock;
+  LHtml: string;
+begin
+  LDocument := TWARichDocument.Create;
+  try
+    LTable := LDocument.AddTable(1, 1);
+    LTable.Rows[0].Cells[0].Alignment := taCenterAlign;
+    LTable.Rows[0].Cells[0].HasBackgroundColor := True;
+    LTable.Rows[0].Cells[0].BackgroundColor := $000000;
+    LFormat := TWARunFormat.Plain;
+    LFormat.HasColor := True;
+    LFormat.Color := $FFFFFF;
+    LTable.Rows[0].Cells[0].AddRun('Title', LFormat);
+    LHtml := TWAHtmlDocumentRenderer.Render(LDocument);
+
+    Assert.Contains(LHtml, '<td style="text-align: center; background-color: #000000;">');
+    Assert.Contains(LHtml, '<span style="color:#ffffff;">Title</span>');
   finally
     LDocument.Free;
   end;

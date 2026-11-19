@@ -31,6 +31,10 @@ type
     // both at once); HTML's <sup>/<sub> are modeled the same way.
     Superscript: Boolean;
     Subscript: Boolean;
+    // Text color as $RRGGBB (RTF \cfN through the color table, CSS
+    // color). HasColor = False is the default (automatic) color.
+    HasColor: Boolean;
+    Color: Integer;
     class function Create(ABold, AItalic, AUnderline: Boolean;
       const AFontName: string; AFontSizeInPoints: Integer;
       ASuperscript: Boolean = False; ASubscript: Boolean = False): TWARunFormat; static;
@@ -106,6 +110,11 @@ type
     // followed by \clmrg). A row holds one TWATableCell per visible cell,
     // so the sum of its cells' ColSpan is the table's column count.
     ColSpan: Integer;
+    // Cell background as $RRGGBB (RTF \clcbpat/\clcfpat/\clshdng, CSS
+    // background-color on the <td>). HasBackgroundColor = False is no
+    // background (transparent).
+    HasBackgroundColor: Boolean;
+    BackgroundColor: Integer;
     Runs: TObjectList<TWARun>;
     constructor Create;
     destructor Destroy; override;
@@ -182,6 +191,8 @@ begin
   Result.FontSizeInPoints := AFontSizeInPoints;
   Result.Superscript := ASuperscript;
   Result.Subscript := ASubscript;
+  Result.HasColor := False;
+  Result.Color := 0;
 end;
 
 class function TWARunFormat.Plain: TWARunFormat;
@@ -194,7 +205,8 @@ begin
   Result :=
     (Bold = AOther.Bold) and (Italic = AOther.Italic) and (Underline = AOther.Underline) and
     (FontName = AOther.FontName) and (FontSizeInPoints = AOther.FontSizeInPoints) and
-    (Superscript = AOther.Superscript) and (Subscript = AOther.Subscript);
+    (Superscript = AOther.Superscript) and (Subscript = AOther.Subscript) and
+    (HasColor = AOther.HasColor) and ((not HasColor) or (Color = AOther.Color));
 end;
 
 { TWARun }

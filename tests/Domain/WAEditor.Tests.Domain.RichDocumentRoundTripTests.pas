@@ -56,6 +56,9 @@ type
     procedure RtfToHtmlToRtf_KeepsWPToolsFormMergesThroughFullCycle;
     [Test]
     procedure RtfToHtmlToRtf_KeepsRowsWithDifferentCellx;
+
+    [Test]
+    procedure RtfToHtmlToRtf_KeepsCellShadingAndTextColor;
   end;
 
 implementation
@@ -747,6 +750,42 @@ begin
     Assert.AreEqual(100, LRun.ImageHeightPx);
   finally
     LFromRtf.Free;
+  end;
+end;
+
+procedure TWARichDocumentRoundTripTests.RtfToHtmlToRtf_KeepsCellShadingAndTextColor;
+var
+  LFromRtf, LFromHtml, LBack: TWARichDocument;
+  LHtml, LRtf: string;
+  LRow: TWATableRow;
+begin
+  LFromRtf := TWARtfDocumentParser.Parse(
+    '{\rtf1\ansi\deff0{\colortbl\red0\green0\blue0;\red255\green255\blue255;\red0\green0\blue0;\red255\green0\blue0;}' +
+    '{\trowd\clbrdrb\brdrs\brdrw15\clcfpat2\clcbpat2\clshdng10000\cellx3000\cellx6000' +
+    '\pard\intbl\qc\plain\cf1\b TITULO\cell\pard\intbl\plain\cf3 x\cell\row}}');
+  try
+    LHtml := TWAHtmlDocumentRenderer.Render(LFromRtf);
+  finally
+    LFromRtf.Free;
+  end;
+  LFromHtml := TWAHtmlDocumentParser.Parse(LHtml);
+  try
+    LRtf := TWARtfDocumentRenderer.Render(LFromHtml);
+  finally
+    LFromHtml.Free;
+  end;
+  LBack := TWARtfDocumentParser.Parse(LRtf);
+  try
+    LRow := TWATableBlock(LBack.Blocks[0]).Rows[0];
+    Assert.IsTrue(LRow.Cells[0].HasBackgroundColor);
+    Assert.AreEqual(Integer($000000), LRow.Cells[0].BackgroundColor);
+    Assert.AreEqual('TITULO', LRow.Cells[0].Runs[0].Text);
+    Assert.IsTrue(LRow.Cells[0].Runs[0].Format.Bold);
+    Assert.AreEqual(Integer($FFFFFF), LRow.Cells[0].Runs[0].Format.Color);
+    Assert.IsFalse(LRow.Cells[1].HasBackgroundColor);
+    Assert.AreEqual(Integer($FF0000), LRow.Cells[1].Runs[0].Format.Color);
+  finally
+    LBack.Free;
   end;
 end;
 
